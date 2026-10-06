@@ -2,13 +2,18 @@
 
 ## Unreleased
 
-- macOS, experimental: builds and runs from source (`tauri.bundle.macos.conf.json`), the window is
-  transparent, sessions and question rounds work.
-- macOS: the plan limits, from Claude Code's sign-in in the Keychain — read only, never refreshed.
+- macOS and Linux. macOS gets one universal disk image for Apple silicon and Intel. It is not
+  signed with a Developer ID, so the first start needs **Open Anyway**. macOS support is
+  experimental: it has run on a Mac built from source (macOS 26.3, Apple silicon), the disk image
+  only in CI so far. Linux gets `.deb`, `.rpm` and an AppImage for x86-64; under Wayland the widget
+  runs through XWayland.
+- macOS: the plan limits, from Claude Code's sign-in in the Keychain — read only, never refreshed. An
+  expired one keeps the last numbers on the card until Claude Code renews it.
 - Petting follows the polled cursor rather than mouse moves: macOS sends none to a window that is
   never active.
-- The `meownitor-round` skill finds the hook on Windows and on macOS.
-- The autostart setting reads «Open at login» on macOS.
+- The data folder is `~/.meownitor` on every system, and the `meownitor-round` skill calls the hook
+  by one path everywhere.
+- The autostart switch is worded for each system: start with Windows, open at login, start on login.
 
 ## 0.1.0
 

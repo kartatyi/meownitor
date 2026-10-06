@@ -7,19 +7,14 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The widget's data folder (sessions.rs `data_dir`): ~\.meownitor on Windows, where Claude
+/// The widget's data folder (sessions.rs `data_dir`): ~/.meownitor, on Windows where Claude
 /// Desktop's package doesn't redirect our writes as it does under AppData.
 fn state_dir() -> Option<PathBuf> {
     #[cfg(windows)]
-    let base = std::env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join(".meownitor"));
+    let home = std::env::var_os("USERPROFILE");
     #[cfg(not(windows))]
-    let base = std::env::var_os("HOME").map(|h| {
-        PathBuf::from(h)
-            .join("Library")
-            .join("Application Support")
-            .join("Meownitor")
-    });
-    base.map(|b| b.join("sessions"))
+    let home = std::env::var_os("HOME");
+    home.map(|h| PathBuf::from(h).join(".meownitor").join("sessions"))
 }
 
 fn now_ms() -> u64 {

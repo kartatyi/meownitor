@@ -24,10 +24,11 @@ body:
     validations:
       required: true
   - type: input
-    id: windows
+    id: system
     attributes:
-      label: Windows version
-      placeholder: Windows 11 23H2
+      label: System
+      description: The system and its version; on Linux also the desktop and whether it is Wayland or X11.
+      placeholder: Windows 11 23H2 / macOS 15.1 / Ubuntu 24.04, GNOME, Wayland
   - type: dropdown
     id: where
     attributes:
@@ -40,5 +41,5 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: The end of `%USERPROFILE%\.meownitor\widget.log` (and `events.log` if a session does not show up). Look them over before you paste them.
+      description: The end of `~/.meownitor/widget.log` (`%USERPROFILE%\.meownitor\widget.log` on Windows), and `events.log` if a session does not show up. Look them over before you paste them.
       render: text

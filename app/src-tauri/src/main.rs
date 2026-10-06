@@ -228,14 +228,13 @@ fn open_session(local: String) {
 }
 
 #[tauri::command]
-fn show(window: WebviewWindow) {
-    let _ = window.show();
+fn show(window: WebviewWindow, beat: State<watchdog::Beat>) {
+    watchdog::shown(&window, &beat);
 }
 
 #[tauri::command]
 fn ignore(window: WebviewWindow, beat: State<watchdog::Beat>, on: bool) {
-    watchdog::ignoring(&beat, on);
-    let _ = window.set_ignore_cursor_events(on);
+    watchdog::ignoring(&window, &beat, on);
 }
 
 #[tauri::command]
@@ -278,6 +277,20 @@ fn main() {
         return;
     }
     msix::migrate(&context.package_info().name);
+    // Wayland lets no window place itself or see the cursor outside it, and the widget does both
+    // (dragging, snapping to an edge, the eyes): wherever there is an X server — XWayland under a
+    // Wayland session — it goes through X, which GTK would otherwise pick only after Wayland.
+    // WebKitGTK's DMA-BUF renderer leaves the page blank where the GPU can't share buffers (NVIDIA,
+    // virtual machines, WSL); the older path is plenty for a widget this small.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if std::env::var_os("DISPLAY").is_some() && std::env::var_os("GDK_BACKEND").is_none() {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -312,6 +325,9 @@ fn main() {
             drag_end
         ])
         .setup(|app| {
+            // A widget, not an app to switch to: no Dock icon and no menu bar of its own.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let menu = tray_menu(app.handle())?;
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())

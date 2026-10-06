@@ -7,11 +7,11 @@
 
 [![Latest release](https://img.shields.io/github/v/release/kartatyi/meownitor?style=flat-square&label=release&color=54A9FF)](https://github.com/kartatyi/meownitor/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/kartatyi/meownitor/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/kartatyi/meownitor/actions/workflows/ci.yml)
-![Windows 10 and 11](https://img.shields.io/badge/Windows-10%20%C2%B7%2011-0078D4?style=flat-square)
+![Windows, macOS and Linux](https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-0078D4?style=flat-square)
 ![English and Ukrainian](https://img.shields.io/badge/UI-English%20%C2%B7%20%D0%A3%D0%BA%D1%80%D0%B0%D1%97%D0%BD%D1%81%D1%8C%D0%BA%D0%B0-8E9AAE?style=flat-square)
 [![MIT license](https://img.shields.io/badge/license-MIT-5DC264?style=flat-square)](LICENSE)
 
-**[Download for Windows](https://github.com/kartatyi/meownitor/releases/latest)** ·
+**[Download](https://github.com/kartatyi/meownitor/releases/latest)** ·
 [What it does](#what-it-does) ·
 [Install](#install) ·
 [How it works](#how-it-works) ·
@@ -94,7 +94,7 @@ slides the card out when you hover over it.
 <td width="50%" align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
-  <img alt="Settings: the character, the language, the sound, start with Windows, the Claude Code hook" src="docs/screenshots/settings-light.png" width="300">
+  <img alt="Settings: the character, the language, the sound, start at login, the Claude Code hook" src="docs/screenshots/settings-light.png" width="300">
 </picture>
 </td>
 <td width="50%" align="center">
@@ -106,47 +106,54 @@ slides the card out when you hover over it.
 </tr>
 </table>
 
-The gear turns the card over: the character, English or Ukrainian, the ask sound, start with Windows,
+The gear turns the card over: the character, English or Ukrainian, the ask sound, start at login,
 and the Claude Code hook, which you install or remove with one click.
 
 ## Install
 
-**Needs:** Windows 10 or 11 (WebView2 is built in) and [Claude Code](https://code.claude.com/docs/en/overview).
-Claude Desktop is optional: it adds session titles and the open-in-Desktop link.
+**Needs:** [Claude Code](https://code.claude.com/docs/en/overview) and one of:
 
-1. Download `Meownitor_<version>_x64-setup.exe` from the **[latest release](https://github.com/kartatyi/meownitor/releases/latest)**
-   and run it. It installs for your user only and needs no admin rights.
+- **Windows** 10 or 11 (WebView2 is built in);
+- **macOS** 11 or later, Apple silicon or Intel. *Experimental:* it has run on a Mac built from
+  source (macOS 26.3, Apple silicon), while the release's disk image has so far only been built and
+  started in CI, so [reports](https://github.com/kartatyi/meownitor/issues) are welcome;
+- **Linux** x86-64 with a compositing desktop (for the transparent window) and a tray; on GNOME that
+  takes the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/).
+  Under Wayland the widget runs through XWayland, since Wayland lets no window place itself.
+
+Claude Desktop is optional: it adds session titles and the open-in-Desktop link. There is no Claude
+Desktop for Linux, so there the widget shows the sessions you run in a terminal.
+
+1. Get the package for your system from the **[latest release](https://github.com/kartatyi/meownitor/releases/latest)**:
+
+   | System | File | Then |
+   |---|---|---|
+   | Windows | `Meownitor_<version>_x64-setup.exe` | run it; it installs for your user only, no admin rights |
+   | macOS | `Meownitor_<version>_universal.dmg` | open it and drag Meownitor to Applications |
+   | Debian, Ubuntu | `Meownitor_<version>_amd64.deb` | `sudo apt install ./Meownitor_<version>_amd64.deb` |
+   | Fedora, openSUSE | `Meownitor_<version>_x86_64.rpm` | `sudo dnf install ./Meownitor_<version>_x86_64.rpm` |
+   | Any Linux | `Meownitor_<version>_amd64.AppImage` | `chmod +x` it and run it |
 
    > [!TIP]
-   > The installer is not code-signed, so Windows SmartScreen may say it does not recognise the app:
-   > **More info → Run anyway**. Every release lists the files' SHA-256 in `SHA256SUMS.txt`.
+   > Nothing is signed with a paid certificate. On Windows, SmartScreen may say it does not recognise
+   > the app: **More info → Run anyway**. On macOS the first start is refused: open
+   > **System Settings → Privacy & Security** and press **Open Anyway** next to Meownitor, or run
+   > `xattr -dr com.apple.quarantine /Applications/Meownitor.app`. Every release lists the files'
+   > SHA-256 in `SHA256SUMS.txt`.
 
 2. The pet appears in the bottom-right corner. Click it to open the card, then click the gear ⚙.
 3. **Claude Code hook → Install.** This adds the widget's hook to `~/.claude/settings.json`. Your other
    hooks stay as they are, and a backup of the file goes next to it. A session shows up on the next
    thing it does.
-4. For the plan limits, sign in to Claude Code once: run `claude`, then `/login`.
+4. For the plan limits, sign in to Claude Code once: run `claude`, then `/login`. On macOS the widget
+   reads that sign-in from the Keychain, and macOS may ask once to let `security` read
+   «Claude Code-credentials»: **Always Allow**.
 5. *Optional, for questions with pictures:* unzip `meownitor-round-skill.zip` from the release into
-   `%USERPROFILE%\.claude\skills\`, so that you have `%USERPROFILE%\.claude\skills\meownitor-round\SKILL.md`.
-   Claude Code picks the skill up in new sessions.
+   `~/.claude/skills/` (`%USERPROFILE%\.claude\skills\` on Windows), so that you have
+   `~/.claude/skills/meownitor-round/SKILL.md`. Claude Code picks the skill up in new sessions.
 
-**Portable:** unzip `Meownitor_<version>_x64-portable.zip` anywhere, run `meownitor.exe` and follow
-steps 2–5.
-
-**macOS** (experimental, built from source — no release yet). Needs [Rust](https://rustup.rs), Node 20+
-and the Xcode command line tools:
-
-```bash
-cd app && npm install
-cargo build --release --bin meownitor-hook --manifest-path src-tauri/Cargo.toml
-npx tauri build --bundles app --config src-tauri/tauri.bundle.macos.conf.json
-open src-tauri/target/release/bundle/macos/Meownitor.app
-```
-
-Then steps 2–3 and 5 as above; the skill goes to `~/.claude/skills/meownitor-round`. The data lives in
-`~/Library/Application Support/Meownitor`. The plan limits use Claude Code's sign-in from the
-Keychain (macOS may ask once to let `security` read «Claude Code-credentials» — **Always Allow**). There
-the widget only reads it and never refreshes it, so an expired one waits for Claude Code to renew it.
+**Portable on Windows:** unzip `Meownitor_<version>_x64-portable.zip` anywhere, run `meownitor.exe`
+and follow steps 2–5.
 
 ### Using it
 
@@ -159,20 +166,25 @@ the widget only reads it and never refreshes it, so an expired one waits for Cla
 | Click a session | open it in Claude Desktop (sessions Desktop knows) |
 | **Answer** on a session | open its question round |
 | ⚙ | the settings |
-| The tray icon | try the moods and characters, quit |
+| The tray icon (the menu bar on macOS) | try the moods and characters, quit |
 
 ### Uninstall
 
-Windows Settings → Apps → **Meownitor** → Uninstall. This takes the hook out of `~/.claude/settings.json`
-and turns off start with Windows. Tick **Delete the application data** to also remove
-`~/.meownitor`. Install it again and the hook and start with Windows come back by
+**Windows:** Settings → Apps → **Meownitor** → Uninstall. This takes the hook out of
+`~/.claude/settings.json` and turns off start with Windows. Tick **Delete the application data** to
+also remove `~/.meownitor`. Install it again and the hook and start with Windows come back by
 themselves.
+
+**macOS and Linux:** removing the app can't reach your settings, so first open ⚙, press
+**Claude Code hook → Remove** and turn autostart off. Then quit from the tray and remove the app:
+drag it from Applications to the Trash, run `sudo apt remove meownitor` or `sudo dnf remove meownitor`,
+or delete the AppImage. `~/.meownitor` holds the widget's data; delete it too if you like.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  S["Claude Code session"] -- "hook events" --> H["meownitor-hook.exe"]
+  S["Claude Code session"] -- "hook events" --> H["meownitor-hook"]
   H -- "state per session" --> F[("~/.meownitor")]
   DK["Claude Desktop's session records"] --> W["Meownitor"]
   F --> W
@@ -181,18 +193,21 @@ flowchart LR
   W -- "your answer" --> F
 ```
 
-- **Sessions.** `meownitor-hook.exe` is a [Claude Code hook](https://code.claude.com/docs/en/hooks)
+- **Sessions.** `meownitor-hook` is a [Claude Code hook](https://code.claude.com/docs/en/hooks)
   on 11 events. For each event it writes what the session is doing into
   `~/.meownitor/sessions/<id>.json` and exits within milliseconds. It never blocks Claude
   or fails it. The widget merges those files with Claude Desktop's own session records (titles,
   archived or not, the `claude://` link) and with the session's transcript, which is how it sees a
-  turn you stopped. The folder is `~/.meownitor` rather than AppData because Claude Desktop is an
-  MSIX package: everything it starts sees AppData through the package's own copy, so a session in
-  Desktop and one in a terminal would write to different places.
+  turn you stopped. The folder is `~/.meownitor` on every system. On Windows it is not in AppData
+  because Claude Desktop there is an MSIX package: everything it starts sees AppData through the
+  package's own copy, so a session in Desktop and one in a terminal would write to different places.
 - **Limits.** Once a minute the widget makes the request Claude Code's `/usage` makes. It is an account
   query, not a model call, so it costs nothing against your limits. It uses Claude Code's sign-in from
-  `~/.claude/.credentials.json` and refreshes the token the way Claude Code does. When the server is
-  busy, the last numbers stay on the card and the requests come less often.
+  `~/.claude/.credentials.json` and refreshes the token the way Claude Code does. On macOS, Claude Code
+  keeps the sign-in in the Keychain instead, and there the widget only reads it: once that token
+  expires, the card keeps its last numbers (with none yet, it says it is waiting for Claude Code)
+  until Claude Code next runs and renews the sign-in. When the server is busy, the last numbers stay on the card and
+  the requests come less often.
 - **Questions.** A session writes one HTML page into its round folder (`meownitor-hook where`) and
   runs `meownitor-hook wait <name>` in the background. The widget serves the page in a window of
   its own. When you press **Send**, the answer lands next to the page and the waiting command hands it
@@ -204,7 +219,8 @@ flowchart LR
 
 - Everything stays on your machine. The only network traffic goes to Anthropic: the usage request,
   plus a token refresh when Claude Code's sign-in is about to expire (written back to
-  `~/.claude/.credentials.json`, as Claude Code does it). Tokens are never logged.
+  `~/.claude/.credentials.json`, as Claude Code does it; never on macOS, where the Keychain is only
+  read). Tokens are never logged.
 - No telemetry and no analytics.
 - The hook records each session's state, the current tool's name and one short detail: the file's
   name, the command's description, the search pattern. `events.log` keeps the last 512 KB of event
@@ -214,22 +230,30 @@ flowchart LR
 
 ## Build from source
 
-Needs [Rust](https://rustup.rs), Node 20+ and the MSVC build tools.
+Needs [Rust](https://rustup.rs) and Node 20+, plus the MSVC build tools on Windows, the Xcode command
+line tools on macOS, and these libraries on Debian or Ubuntu:
 
-```powershell
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+```
+
+```bash
 cd app
 npm install
 cd src-tauri
 cargo test
-cargo build        # target\debug\meownitor.exe and meownitor-hook.exe
+cargo build        # target/debug/meownitor and meownitor-hook (.exe on Windows)
 ```
 
-The installer, the way the release workflow builds it:
+The packages, the way the release workflow builds them: the hook first, then the bundle, which
+carries it next to the widget (on Windows through `tauri.bundle.windows.conf.json`).
 
-```powershell
+```bash
 cd app
 cargo build --release --bin meownitor-hook --manifest-path src-tauri/Cargo.toml
-npx tauri build --bundles nsis --config src-tauri/tauri.bundle.conf.json
+npx tauri build --bundles nsis --config src-tauri/tauri.bundle.windows.conf.json            # Windows
+npx tauri build --bundles app,dmg            # macOS, this Mac's architecture
+npx tauri build --bundles deb,rpm,appimage   # Linux
 ```
 
 | Folder | What is in it |
@@ -255,14 +279,16 @@ widget starts.
    git push origin v0.2.0
    ```
 
-   The [Release](.github/workflows/release.yml) workflow tests and builds, checks that the installer
-   holds both programs, and publishes the installer, the portable zip, the skill and the checksums
-   with the version's changelog section as the notes. A tag with a `-` (`v0.2.0-beta.1`) becomes a
-   pre-release.
+   The [Release](.github/workflows/release.yml) workflow tests and builds on Windows, macOS and
+   Linux, checks that every package holds both programs, and publishes the packages, the skill and
+   the checksums with the version's changelog section as the notes. A tag with a `-`
+   (`v0.2.0-beta.1`) becomes a pre-release. Run by hand with **publish** off, it builds any branch
+   and leaves the packages as the run's artifacts, so they can be tried before tagging.
 
 ## Roadmap
 
-- macOS: a release build (signed and notarized).
+- macOS: a Developer ID signature and notarization, so the first start needs no Open Anyway.
+- Linux on ARM.
 
 ## Contributing
 

@@ -1,5 +1,7 @@
-# Every push and pull request: formatting, clippy with warnings as errors, the tests, and a debug
-# build of the widget and the hook.
+# Every push and pull request, on Windows, Linux and macOS: formatting, clippy with warnings as
+# errors, the tests, and a debug build of the widget and the hook. On Linux and macOS the widget is
+# then started for a few seconds and the screen captured (the "smoke" artifact): there is no Mac or
+# Linux desktop in the loop otherwise.
 name: CI
 
 on:
@@ -8,10 +10,20 @@ on:
   pull_request:
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev xvfb imagemagick x11-utils
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -36,3 +48,41 @@ jobs:
       - name: Build
         working-directory: app/src-tauri
         run: cargo build --locked
+
+      # The card open (MEOWNITOR_START), so the capture shows the page rendered, not just the cat.
+      # It fails if the widget is gone before the capture.
+      - name: Smoke run (Linux)
+        if: runner.os == 'Linux'
+        working-directory: app/src-tauri
+        run: |
+          MEOWNITOR_START=card xvfb-run -a -s "-screen 0 1280x800x24" bash -c '
+            ./target/debug/meownitor & pid=$!
+            # On the runner the first start can take a while: wait for the window, up to 90 s.
+            for i in $(seq 90); do
+              xwininfo -root -tree | grep -q "\"Meownitor\": (\"meownitor\"" && break
+              kill -0 $pid || exit 1
+              sleep 1
+            done
+            echo "the widget window after ${i} s"
+            sleep 5
+            xwininfo -root -tree | grep -i meownitor || true
+            import -window root smoke-linux.png || true
+            kill -0 $pid && kill $pid'
+          cat ~/.meownitor/widget.log
+
+      - name: Smoke run (macOS)
+        if: runner.os == 'macOS'
+        working-directory: app/src-tauri
+        run: |
+          MEOWNITOR_START=card ./target/debug/meownitor & pid=$!
+          sleep 15
+          screencapture -x smoke-macos.png || echo "no screen capture on this runner"
+          kill -0 $pid && kill $pid
+          cat ~/.meownitor/widget.log
+
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os != 'Windows'
+        with:
+          name: smoke-${{ runner.os }}
+          path: app/src-tauri/smoke-*.png
+          if-no-files-found: ignore

@@ -33,11 +33,7 @@ pub struct Status {
 }
 
 fn settings_path() -> Option<PathBuf> {
-    #[cfg(windows)]
-    let home = std::env::var_os("USERPROFILE");
-    #[cfg(not(windows))]
-    let home = std::env::var_os("HOME");
-    home.map(|h| PathBuf::from(h).join(".claude").join("settings.json"))
+    crate::sessions::home().map(|h| h.join(".claude").join("settings.json"))
 }
 
 pub fn exe_name() -> &'static str {
