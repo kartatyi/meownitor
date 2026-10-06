@@ -1,0 +1,25 @@
+# The workflows' actions are kept up to date weekly, in one pull request. The third-party ones are
+# pinned to a commit: rust-cache's pin moves with its releases; rust-toolchain has none, so its pin is
+# moved by hand (the Rust it installs is still the newest stable). Cargo and npm get pull requests
+# only for security advisories: open-pull-requests-limit 0 turns their version updates off.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /app/src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
