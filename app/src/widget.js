@@ -12,6 +12,8 @@
   var t=I18N.t;
   var KINDS={cat:['cat','catB'],blob:['blob','blob'],ghost:['ghost','ghost']};
   var CFG={kind:'cat',sound:true},SET={autostart:false,hook:null,confirm:null,err:'',ver:''};
+  // macOS has no «start with Windows»: there it is a login item (tauri-plugin-autostart's LaunchAgent).
+  var MAC=/Mac/.test(navigator.platform||navigator.userAgent);
   var minis={};Object.keys(KINDS).forEach(function(k){minis[k]=Pixel.Sprite(KINDS[k][0],KINDS[k][1],2,'idle');});
 
   // Live data from Rust: the session list (sessions.rs) and the plan limits (limits.rs).
@@ -62,7 +64,7 @@
   }
   function maxLim(){return LIM&&LIM.length?LIM.reduce(function(a,b){return b.p>a.p?b:a;}):null;}
   function limHTML(){
-    if(!LIM||!LIM.length)return '<div class="lim"><div class="nolim">'+t('lim.none',{why:LIMWHY==='net'||LIMWHY==='busy'||LIMWHY==='login'?t('lim.'+LIMWHY):'…'})+'</div></div>';
+    if(!LIM||!LIM.length)return '<div class="lim"><div class="nolim">'+t('lim.none',{why:LIMWHY==='net'||LIMWHY==='busy'||LIMWHY==='login'||LIMWHY==='stale'?t('lim.'+LIMWHY):'…'})+'</div></div>';
     // Through a hiccup (busy / net) the last numbers stay; once they are a few minutes old, say so.
     var stale=LIMWHY!=='ok'&&Date.now()-LIMAT>5*60000?'<div class="nolim st">'+t('lim.updated',{ago:'<span data-ago="'+LIMAT+'">'+agoTxt(LIMAT)+'</span>'})+'</div>':'';
     return '<div class="lim">'+LIM.map(function(l){return '<div class="lr"><span class="ll">'+esc(l.l)+'</span><span class="lp">'+l.p+'%</span><span class="lb"><i style="width:'+Math.min(100,l.p)+'%;background:'+col(l.p)+'"></i></span><span class="rs">'+ic('Autorenew')+'<span data-reset="'+l.r+'">'+until(l.r)+'</span></span></div>';}).join('')+stale+'</div>';
@@ -99,7 +101,7 @@
       '<div class="sec"><div class="sl">'+t('character')+'</div><div class="kinds">'+Object.keys(KINDS).map(function(k){return '<button type="button" class="kd'+(CFG.kind===k?' on':'')+'" data-act="kind" data-kind="'+k+'"><span class="mini" data-mini="'+k+'"></span><span>'+t('kind.'+k)+'</span></button>';}).join('')+'</div></div>'+
       '<div class="opt"><span>'+t('language')+'</span><span class="seg">'+I18N.LANGS.map(function(l){return '<button type="button" class="'+(I18N.lang()===l[0]?'on':'')+'" data-act="lang" data-lang="'+l[0]+'">'+l[1]+'</button>';}).join('')+'</span></div>'+
       '<div class="opt"><span>'+t('sound')+'</span><button type="button" class="tgl'+(CFG.sound!==false?' on':'')+'" data-act="sound" title="'+t('sound.t')+'"></button></div>'+
-      '<div class="opt"><span>'+t('autostart')+'</span><button type="button" class="tgl'+(SET.autostart?' on':'')+'" data-act="autostart" title="'+t('autostart.t')+'"></button></div>'+
+      '<div class="opt"><span>'+t(MAC?'autostart.mac':'autostart')+'</span><button type="button" class="tgl'+(SET.autostart?' on':'')+'" data-act="autostart" title="'+t('autostart.t')+'"></button></div>'+
       hookHTML()+'<div class="ver">'+esc(SET.ver)+'</div></div>';
   }
   function strip(edge){var m=maxLim(),act=active();return '<div class="strip e'+edge+'">'+(act.length?act.map(function(s){return '<span class="dot '+s.state+'"></span>';}).join(''):'<span class="dot"></span>')+(m?'<span class="vb"><i style="height:'+Math.min(100,m.p)+'%;background:'+col(m.p)+'"></i></span>':'')+'</div>';}
@@ -186,6 +188,7 @@
       if(!drag){
         var solid=inside&&solidAt(x,y);setIgnore(!solid);
         big.hover=small.hover=solid&&document.elementFromPoint(x,y)&&document.elementFromPoint(x,y).tagName==='CANVAS';
+        if(big.hover)petAt(p.cursor[0]);else petX=null;
         if(S.dock&&!S.open&&solid){S.open=true;lastInside=now;await relayout();}
         else if(S.dock&&S.open&&!S.hold){if(inside)lastInside=now;else if(now-lastInside>450){S.open=false;S.back=false;SET.confirm=null;await relayout();}}
       }
@@ -199,6 +202,14 @@
   // Dragging: by the cat, the card header or the strip. Rust keeps the grab offset and moves the
   // window to the cursor; on release we snap to an edge within SNAP px.
   var pending=false,pet=[],petX=null,petSign=0;
+  // Petting: the cursor wiggled left and right over the pet. Fed from poll(), not pointermove: macOS
+  // sends no mouse moves to a window that never becomes active, as ours never does.
+  function petAt(sx){
+    var now=performance.now();
+    if(petX!=null&&Math.abs(sx-petX)<2)return;
+    if(petX!=null){var sg=Math.sign(sx-petX);if(sg!==petSign){pet.push(now);petSign=sg;}}petX=sx;
+    pet=pet.filter(function(t){return now-t<1200;});if(pet.length>=4){big.petUntil=small.petUntil=now+2200;pet=[];}
+  }
   root.addEventListener('pointerdown',function(e){
     if(e.button!==0||e.target.closest('button'))return;
     if(!e.target.closest('.grab,.strip'))return;
@@ -207,12 +218,7 @@
     e.preventDefault();
   });
   root.addEventListener('pointermove',async function(e){
-    if(!drag){
-      if(e.target.tagName!=='CANVAS')return;
-      var now=performance.now();if(petX!=null){var sg=Math.sign(e.screenX-petX);if(sg&&sg!==petSign){pet.push(now);petSign=sg;}}petX=e.screenX;
-      pet=pet.filter(function(t){return now-t<1200;});if(pet.length>=4){big.petUntil=small.petUntil=now+2200;pet=[];}
-      return;
-    }
+    if(!drag)return;
     if(!drag.moved){
       if(Math.hypot(e.screenX-drag.sx,e.screenY-drag.sy)<4)return;
       drag.moved=true;

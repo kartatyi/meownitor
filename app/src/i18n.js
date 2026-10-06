@@ -7,7 +7,7 @@
       'u.s':'{n} s','u.min':'{n} min','u.h':'{n} h','u.d':'{n} d','yesterday':'yesterday','ago':'{t} ago',
       'lim.session':'5 hours','lim.week':'Week',
       'lim.none':'Limits: {why}','lim.net':'no connection','lim.busy':'the server asks to wait, will try later',
-      'lim.login':'sign in to Claude Code — <code>claude</code> in a terminal','lim.updated':'Updated {ago}',
+      'lim.login':'sign in to Claude Code — <code>claude</code> in a terminal','lim.stale':'waiting for Claude Code to renew its sign-in','lim.updated':'Updated {ago}',
       'what.think':'Thinking','what.ask':'Asks you','what.agent':'Agent','what.perm':'Waiting for permission',
       'what.done':'Done — your turn','what.failed':'Stopped with an error',
       'answer':'Answer','open.desktop':'Open in Desktop',
@@ -20,7 +20,7 @@
       'hook':'Claude Code hook','hook.on':'installed — sessions are visible','hook.off':'not installed — no sessions',
       'hook.uninstall':'Remove','hook.install':'Install',
       'back':'Back to sessions','character':'Character','sound':'Sound when a session asks','sound.t':'Sound',
-      'autostart':'Start with Windows','autostart.t':'Autostart','autostart.err':'Autostart: {e}',
+      'autostart':'Start with Windows','autostart.mac':'Open at login','autostart.t':'Autostart','autostart.err':'Autostart: {e}',
       'language':'Language','check':'check'
     },
     uk:{
@@ -28,7 +28,7 @@
       'u.s':'{n} с','u.min':'{n} хв','u.h':'{n} г','u.d':'{n} д','yesterday':'вчора','ago':'{t} тому',
       'lim.session':'5 годин','lim.week':'Тиждень',
       'lim.none':'Ліміти: {why}','lim.net':'нема з’єднання','lim.busy':'сервер просить зачекати, спробую пізніше',
-      'lim.login':'увійди в Claude Code — <code>claude</code> у терміналі','lim.updated':'Оновлено {ago}',
+      'lim.login':'увійди в Claude Code — <code>claude</code> у терміналі','lim.stale':'чекаю, поки Claude Code оновить вхід','lim.updated':'Оновлено {ago}',
       'what.think':'Думає','what.ask':'Питає тебе','what.agent':'Агент','what.perm':'Чекає дозволу',
       'what.done':'Готово — твоя черга','what.failed':'Зупинилась з помилкою',
       'answer':'Відповісти','open.desktop':'Відкрити в Desktop',
@@ -41,7 +41,7 @@
       'hook':'Хук Claude Code','hook.on':'стоїть — сесії видно','hook.off':'не стоїть — сесій не видно',
       'hook.uninstall':'Зняти','hook.install':'Поставити',
       'back':'Назад до сесій','character':'Персонаж','sound':'Звук, коли сесія питає','sound.t':'Звук',
-      'autostart':'Запускати з Windows','autostart.t':'Автозапуск','autostart.err':'Автозапуск: {e}',
+      'autostart':'Запускати з Windows','autostart.mac':'Запускати під час входу','autostart.t':'Автозапуск','autostart.err':'Автозапуск: {e}',
       'language':'Мова','check':'перевірка'
     }
   };

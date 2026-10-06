@@ -4,6 +4,9 @@
 // Claude Code refreshes it and written back, so a single `claude` login keeps the widget going.
 // The endpoint is rate-limited per account and Claude Code / Desktop query it too, so a 429 is an
 // ordinary hiccup: the last numbers stay on the card and the next tries come less often.
+// On macOS Claude Code keeps the sign-in in the Keychain instead of the file. There it is only read,
+// never refreshed: the refresh token rotates, and a running Claude Code holding the old one would
+// lose its sign-in. An expired token waits for Claude Code to refresh it.
 // No token ever leaves this module and nothing here is logged.
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -29,6 +32,9 @@ enum Why {
     /// The server answered but asked to wait: 429, or a 5xx.
     Busy,
     Net,
+    /// macOS: the Keychain's token has expired and only Claude Code refreshes it there.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    Stale,
 }
 
 impl Why {
@@ -37,6 +43,7 @@ impl Why {
             Why::Login => "login",
             Why::Busy => "busy",
             Why::Net => "net",
+            Why::Stale => "stale",
         }
     }
 }
@@ -67,6 +74,63 @@ fn creds_path() -> Option<PathBuf> {
     #[cfg(not(windows))]
     let home = std::env::var_os("HOME");
     home.map(|h| PathBuf::from(h).join(".claude").join(".credentials.json"))
+}
+
+/// The Keychain item Claude Code keeps its sign-in in on macOS, the same JSON as the file.
+#[cfg(target_os = "macos")]
+fn read_keychain() -> Result<Value, Why> {
+    let out = std::process::Command::new("/usr/bin/security")
+        .args([
+            "find-generic-password",
+            "-s",
+            "Claude Code-credentials",
+            "-w",
+        ])
+        .output();
+    let r = match out {
+        Err(e) => Err(format!("cannot run security: {e}")),
+        Ok(o) if !o.status.success() => Err(format!(
+            "no Keychain sign-in (security exit {})",
+            o.status.code().unwrap_or(-1)
+        )),
+        Ok(o) => serde_json::from_slice(&o.stdout).map_err(|e| {
+            format!(
+                "Keychain sign-in is not JSON ({} bytes): {e}",
+                o.stdout.len()
+            )
+        }),
+    };
+    keychain_note(
+        r.as_ref()
+            .err()
+            .map(String::as_str)
+            .unwrap_or("Keychain sign-in read"),
+    );
+    r.map_err(|_| Why::Login)
+}
+
+/// widget.log says why the Keychain gave no sign-in — once per change, never the secret itself.
+#[cfg(target_os = "macos")]
+fn keychain_note(msg: &str) {
+    static LAST: Mutex<String> = Mutex::new(String::new());
+    let mut last = LAST.lock().unwrap();
+    if *last != msg {
+        crate::watchdog::log(&format!("limits: {msg}"));
+        *last = msg.to_string();
+    }
+}
+
+/// The Keychain's access token while it is valid; never refreshed (see the top of the file).
+#[cfg(target_os = "macos")]
+fn keychain_token(rejected: Option<&str>) -> Result<String, Why> {
+    let (access, expires) = access_of(&read_keychain()?);
+    if access.is_empty() {
+        return Err(Why::Login);
+    }
+    if expires > now_ms() && rejected != Some(access.as_str()) {
+        return Ok(access);
+    }
+    Err(Why::Stale)
 }
 
 fn agent() -> ureq::Agent {
@@ -111,6 +175,10 @@ fn access_of(creds: &Value) -> (String, u64) {
 /// server just turned down (`rejected`). A token Claude Code put in the file since then is used as is.
 fn token(rejected: Option<&str>) -> Result<String, Why> {
     let path = creds_path().ok_or(Why::Login)?;
+    #[cfg(target_os = "macos")]
+    if !path.exists() {
+        return keychain_token(rejected);
+    }
     let mut creds = read_creds(&path)?;
     let (access, expires) = access_of(&creds);
     if !access.is_empty() && expires > now_ms() + EARLY_MS && rejected != Some(access.as_str()) {
@@ -221,7 +289,7 @@ impl Poll {
                 self.wait = match why {
                     Why::Busy => (self.wait * 2).min(MAX_WAIT),
                     Why::Net => 30,
-                    Why::Login => WAIT,
+                    Why::Login | Why::Stale => WAIT,
                 };
                 // A hiccup keeps the last numbers; a sign-in that is really gone clears them.
                 let (data, at) = match &self.last {
