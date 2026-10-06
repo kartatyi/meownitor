@@ -245,15 +245,15 @@ cargo test
 cargo build        # target/debug/meownitor and meownitor-hook (.exe on Windows)
 ```
 
-The packages, the way the release workflow builds them: the hook first, then the bundle, with the
-config that puts the hook next to the widget.
+The packages, the way the release workflow builds them: the hook first, then the bundle, which
+carries it next to the widget (on Windows through `tauri.bundle.windows.conf.json`).
 
 ```bash
 cd app
 cargo build --release --bin meownitor-hook --manifest-path src-tauri/Cargo.toml
 npx tauri build --bundles nsis --config src-tauri/tauri.bundle.windows.conf.json            # Windows
-npx tauri build --bundles app,dmg --config src-tauri/tauri.bundle.macos.conf.json           # macOS, this Mac's architecture
-npx tauri build --bundles deb,rpm,appimage --config src-tauri/tauri.bundle.linux.conf.json  # Linux
+npx tauri build --bundles app,dmg            # macOS, this Mac's architecture
+npx tauri build --bundles deb,rpm,appimage   # Linux
 ```
 
 | Folder | What is in it |

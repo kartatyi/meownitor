@@ -137,9 +137,9 @@ jobs:
         working-directory: app/src-tauri
         run: cargo test --locked -- --test-threads=1
 
-      # The hook is built for both architectures and joined into one binary where
-      # tauri.bundle.macos.conf.json takes it from, then signed ad hoc so the app's own (ad hoc)
-      # signature can seal it in.
+      # The bundle carries every binary of the crate next to the widget (Contents/MacOS), but for a
+      # universal app tauri joins only the widget's two builds: the hook's are joined here, where
+      # it looks for them, and signed ad hoc so the app's own (ad hoc) signature can seal it in.
       - name: Build the app
         working-directory: app
         run: |
@@ -147,12 +147,13 @@ jobs:
           for t in aarch64-apple-darwin x86_64-apple-darwin; do
             cargo build --release --locked --manifest-path src-tauri/Cargo.toml --bin meownitor-hook --target $t
           done
-          mkdir -p src-tauri/target/release
-          lipo -create -output src-tauri/target/release/meownitor-hook \
+          u=src-tauri/target/universal-apple-darwin/release
+          mkdir -p $u
+          lipo -create -output $u/meownitor-hook \
             src-tauri/target/aarch64-apple-darwin/release/meownitor-hook \
             src-tauri/target/x86_64-apple-darwin/release/meownitor-hook
-          codesign --force --sign - src-tauri/target/release/meownitor-hook
-          npx tauri build --target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.bundle.macos.conf.json
+          codesign --force --sign - $u/meownitor-hook
+          npx tauri build --target universal-apple-darwin --bundles app,dmg
 
       - name: Check the app holds both programs, for both architectures, sealed
         run: |
@@ -207,13 +208,13 @@ jobs:
         working-directory: app/src-tauri
         run: cargo test --locked -- --test-threads=1
 
-      # As on Windows, the hook first; tauri.bundle.linux.conf.json puts it in /usr/bin next to the widget.
+      # As on Windows, the hook first; the packages carry it in /usr/bin next to the widget.
       - name: Build the packages
         working-directory: app
         run: |
           npm ci
           cargo build --release --locked --manifest-path src-tauri/Cargo.toml --bin meownitor-hook
-          npx tauri build --bundles deb,rpm,appimage --config src-tauri/tauri.bundle.linux.conf.json
+          npx tauri build --bundles deb,rpm,appimage
 
       - name: Check the packages hold both programs
         run: |

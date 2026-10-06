@@ -1,9 +1,0 @@
-{
-  "bundle": {
-    "macOS": {
-      "files": {
-        "MacOS/meownitor-hook": "target/release/meownitor-hook"
-      }
-    }
-  }
-}
