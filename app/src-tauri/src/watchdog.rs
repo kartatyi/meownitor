@@ -194,6 +194,8 @@ pub fn log(msg: &str) {
     let Some(dir) = crate::sessions::data_dir() else {
         return;
     };
+    // On a first run nothing has made the data folder yet.
+    let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("widget.log");
     if std::fs::metadata(&path).is_ok_and(|m| m.len() > 256 * 1024) {
         let _ = std::fs::remove_file(&path);
