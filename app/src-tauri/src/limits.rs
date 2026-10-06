@@ -69,11 +69,7 @@ fn now_ms() -> u64 {
 }
 
 fn creds_path() -> Option<PathBuf> {
-    #[cfg(windows)]
-    let home = std::env::var_os("USERPROFILE");
-    #[cfg(not(windows))]
-    let home = std::env::var_os("HOME");
-    home.map(|h| PathBuf::from(h).join(".claude").join(".credentials.json"))
+    crate::sessions::home().map(|h| h.join(".claude").join(".credentials.json"))
 }
 
 /// The Keychain item Claude Code keeps its sign-in in on macOS, the same JSON as the file.

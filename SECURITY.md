@@ -20,7 +20,7 @@ Worth knowing when you judge what is a vulnerability:
 - **Claude Code's settings.** `~/.claude/settings.json` changes only when you install or remove the
   hook (from the settings or the installer) or when an update moves the hook's copy, and only the
   widget's own entries change; the file is backed up first.
-- **The hook.** `meownitor-hook.exe` runs on Claude Code's session events. It reads the event from
+- **The hook.** `meownitor-hook` runs on Claude Code's session events. It reads the event from
   stdin and writes the session's state, the current tool's name and one short detail (a file name, a
   command's description, a search pattern) into `~/.meownitor`. It makes no network requests.
 - **Question rounds.** Pages a Claude Code session writes are served to a window of the widget's own

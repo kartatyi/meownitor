@@ -1,13 +1,9 @@
 {
   "bundle": {
-    "targets": [
-      "app"
-    ],
-    "resources": {
-      "target/release/meownitor-hook": "meownitor-hook"
-    },
     "macOS": {
-      "minimumSystemVersion": "11.0"
+      "files": {
+        "MacOS/meownitor-hook": "target/release/meownitor-hook"
+      }
     }
   }
 }

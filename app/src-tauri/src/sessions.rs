@@ -60,26 +60,33 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// ~\.meownitor on Windows: not under AppData, which Claude Desktop's package redirects (msix.rs).
-pub fn data_dir() -> Option<PathBuf> {
+/// The user's home folder: %USERPROFILE% on Windows (a shell's $HOME there may be anywhere), $HOME elsewhere.
+pub fn home() -> Option<PathBuf> {
     #[cfg(windows)]
-    return std::env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join(".meownitor"));
+    return std::env::var_os("USERPROFILE").map(PathBuf::from);
     #[cfg(not(windows))]
-    return std::env::var_os("HOME").map(|h| {
-        PathBuf::from(h)
-            .join("Library")
-            .join("Application Support")
-            .join("Meownitor")
-    });
+    return std::env::var_os("HOME").map(PathBuf::from);
 }
 
-/// Claude Desktop installed as an MSIX package keeps its records in the package's copy of AppData.
+/// ~/.meownitor on every system — on Windows not under AppData, which Claude Desktop's package
+/// redirects (msix.rs) — so the hook and the round skill find it by one path.
+pub fn data_dir() -> Option<PathBuf> {
+    home().map(|h| h.join(".meownitor"))
+}
+
+/// Where Claude Desktop keeps its records: %APPDATA%\Claude — or the MSIX package's copy of it —
+/// on Windows, ~/Library/Application Support/Claude on macOS, and on Linux, which has no Desktop
+/// of its own, where the community builds of it keep theirs: $XDG_CONFIG_HOME/Claude.
 fn desktop_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     let base = std::env::var_os("APPDATA").map(PathBuf::from);
-    #[cfg(not(windows))]
-    let base = std::env::var_os("HOME")
-        .map(|h| PathBuf::from(h).join("Library").join("Application Support"));
+    #[cfg(target_os = "macos")]
+    let base = home().map(|h| h.join("Library").join("Application Support"));
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| home().map(|h| h.join(".config")));
     let plain = base.map(|b| b.join("Claude").join("claude-code-sessions"));
     let packaged = crate::msix::claude_packages().into_iter().map(|p| {
         p.join("Roaming")
@@ -201,17 +208,13 @@ fn transcript_of(sid: &str, h: &Hooked) -> Option<PathBuf> {
     if !h.transcript.is_empty() {
         return Some(PathBuf::from(&h.transcript));
     }
-    #[cfg(windows)]
-    let home = std::env::var_os("USERPROFILE");
-    #[cfg(not(windows))]
-    let home = std::env::var_os("HOME");
     let project: String = h
         .cwd
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
     Some(
-        PathBuf::from(home?)
+        home()?
             .join(".claude")
             .join("projects")
             .join(project)
@@ -448,9 +451,13 @@ pub fn open_in_desktop(local: &str) {
             .creation_flags(0x0800_0000)
             .spawn();
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open").arg(&url).spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
     }
 }
 

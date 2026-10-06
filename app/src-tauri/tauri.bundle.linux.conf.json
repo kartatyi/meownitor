@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "linux": {
+      "deb": {
+        "files": { "/usr/bin/meownitor-hook": "target/release/meownitor-hook" }
+      },
+      "rpm": {
+        "files": { "/usr/bin/meownitor-hook": "target/release/meownitor-hook" }
+      },
+      "appimage": {
+        "files": { "/usr/bin/meownitor-hook": "target/release/meownitor-hook" }
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@
   <img alt="Meownitor — піксельний котик на робочому столі, що стежить за вашими сесіями Claude Code" src="docs/screenshots/hero-light.png" width="100%">
 </picture>
 
-**[Завантажити для Windows](https://github.com/kartatyi/meownitor/releases/latest)** ·
+**[Завантажити](https://github.com/kartatyi/meownitor/releases/latest)** ·
 [Що вміє](#що-вміє) ·
 [Встановлення](#встановлення) ·
 [Як це працює](#як-це-працює) ·
@@ -76,47 +76,54 @@
 
 ### Налаштування на звороті картки
 
-Шестерня перевертає картку: персонаж, мова (English або українська), звук питання, запуск із Windows
+Шестерня перевертає картку: персонаж, мова (English або українська), звук питання, запуск під час входу
 і хук Claude Code, який ставиться чи знімається одним кліком.
 
 ## Встановлення
 
-**Потрібно:** Windows 10 або 11 (WebView2 уже вбудований) і [Claude Code](https://code.claude.com/docs/en/overview).
-Claude Desktop — за бажанням: з ним видно назви сесій і працює відкриття в Desktop.
+**Потрібно:** [Claude Code](https://code.claude.com/docs/en/overview) і одне з:
 
-1. Завантажте `Meownitor_<версія>_x64-setup.exe` з **[останнього релізу](https://github.com/kartatyi/meownitor/releases/latest)**
-   і запустіть. Ставиться лише для вашого користувача, права адміністратора не потрібні.
+- **Windows** 10 або 11 (WebView2 уже вбудований);
+- **macOS** 11 або новіша, Apple silicon чи Intel. *Експериментально:* зібраний з коду віджет уже
+  працював на Mac (macOS 26.3, Apple silicon), а образ диска з релізу поки що лише збирають і
+  запускають у CI, тож [повідомлення](https://github.com/kartatyi/meownitor/issues) вітаються;
+- **Linux** x86-64 із композитним робочим столом (для прозорого вікна) і треєм; у GNOME для цього
+  потрібне [розширення AppIndicator](https://extensions.gnome.org/extension/615/appindicator-support/).
+  У Wayland віджет працює через XWayland, бо Wayland не дозволяє вікну самому обирати своє місце.
+
+Claude Desktop — за бажанням: з ним видно назви сесій і працює відкриття в Desktop. Claude Desktop для
+Linux немає, тож там віджет показує сесії, які ви запускаєте в терміналі.
+
+1. Візьміть пакет для вашої системи з **[останнього релізу](https://github.com/kartatyi/meownitor/releases/latest)**:
+
+   | Система | Файл | Далі |
+   |---|---|---|
+   | Windows | `Meownitor_<версія>_x64-setup.exe` | запустіть; ставиться лише для вашого користувача, права адміністратора не потрібні |
+   | macOS | `Meownitor_<версія>_universal.dmg` | відкрийте і перетягніть Meownitor у Програми |
+   | Debian, Ubuntu | `Meownitor_<версія>_amd64.deb` | `sudo apt install ./Meownitor_<версія>_amd64.deb` |
+   | Fedora, openSUSE | `Meownitor_<версія>_x86_64.rpm` | `sudo dnf install ./Meownitor_<версія>_x86_64.rpm` |
+   | Будь-який Linux | `Meownitor_<версія>_amd64.AppImage` | `chmod +x` і запустіть |
 
    > [!TIP]
-   > Інсталятор не підписаний, тож Windows SmartScreen може сказати, що не знає цієї програми:
-   > **Докладніше → Виконати однаково**. До кожного релізу додано SHA-256 файлів у `SHA256SUMS.txt`.
+   > Жоден пакет не підписано платним сертифікатом. У Windows SmartScreen може сказати, що не знає цієї
+   > програми: **Докладніше → Виконати однаково**. У macOS перший запуск відхиляється: відкрийте
+   > **Системні параметри → Приватність і безпека** і натисніть **Все одно відкрити** біля Meownitor, або
+   > виконайте `xattr -dr com.apple.quarantine /Applications/Meownitor.app`. До кожного релізу додано
+   > SHA-256 файлів у `SHA256SUMS.txt`.
 
 2. Улюбленець з'явиться в правому нижньому куті. Клацніть його, щоб відкрити картку, тоді шестерню ⚙.
 3. Перемкніть мову на **Українська**, якщо треба.
 4. **Хук Claude Code → Поставити.** Це додає хук віджета в `~/.claude/settings.json`. Інші ваші хуки
    лишаються як є, а копія файлу лягає поруч. Сесія з'явиться з наступної ж своєї дії.
-5. Для лімітів увійдіть у Claude Code один раз: `claude`, потім `/login`.
+5. Для лімітів увійдіть у Claude Code один раз: `claude`, потім `/login`. У macOS віджет читає цей вхід
+   із Keychain, і macOS може раз спитати, чи дати `security` прочитати «Claude Code-credentials»:
+   **Always Allow**.
 6. *За бажанням, для питань із картинками:* розпакуйте `meownitor-round-skill.zip` з релізу в
-   `%USERPROFILE%\.claude\skills\`, щоб вийшло `%USERPROFILE%\.claude\skills\meownitor-round\SKILL.md`.
-   Claude Code підхопить скіл у нових сесіях.
+   `~/.claude/skills/` (`%USERPROFILE%\.claude\skills\` у Windows), щоб вийшло
+   `~/.claude/skills/meownitor-round/SKILL.md`. Claude Code підхопить скіл у нових сесіях.
 
-**Портативна версія:** розпакуйте `Meownitor_<версія>_x64-portable.zip` куди завгодно, запустіть
-`meownitor.exe` і пройдіть кроки 2–6.
-
-**macOS** (експериментально, збірка з коду — релізу ще нема). Потрібні [Rust](https://rustup.rs), Node 20+
-і Xcode command line tools:
-
-```bash
-cd app && npm install
-cargo build --release --bin meownitor-hook --manifest-path src-tauri/Cargo.toml
-npx tauri build --bundles app --config src-tauri/tauri.bundle.macos.conf.json
-open src-tauri/target/release/bundle/macos/Meownitor.app
-```
-
-Далі ті самі кроки з налаштуваннями й хуком; скіл кладіть у `~/.claude/skills/meownitor-round`. Дані
-лежать у `~/Library/Application Support/Meownitor`. Ліміти плану беруть вхід Claude Code з Keychain
-(macOS може раз спитати, чи дати `security` прочитати «Claude Code-credentials» — **Always Allow**).
-Віджет його лише читає й не оновлює, тож прострочений чекає, поки його оновить Claude Code.
+**Портативна версія для Windows:** розпакуйте `Meownitor_<версія>_x64-portable.zip` куди завгодно,
+запустіть `meownitor.exe` і пройдіть кроки 2–6.
 
 ### Як користуватись
 
@@ -129,26 +136,34 @@ open src-tauri/target/release/bundle/macos/Meownitor.app
 | Клац по сесії | відкрити в Claude Desktop (якщо Desktop її знає) |
 | **Відповісти** на сесії | відкрити її раунд питань |
 | ⚙ | налаштування |
-| Іконка в треї | спробувати настрої й персонажів, вийти |
+| Іконка в треї (рядок меню в macOS) | спробувати настрої й персонажів, вийти |
 
 ### Видалення
 
-Параметри Windows → Програми → **Meownitor** → Видалити. Це знімає хук з `~/.claude/settings.json` і
-вимикає запуск із Windows. Позначте **Delete the application data**, щоб прибрати й
-`~/.meownitor`. Якщо встановите знову, хук і автозапуск повернуться самі.
+**Windows:** Параметри → Програми → **Meownitor** → Видалити. Це знімає хук з
+`~/.claude/settings.json` і вимикає запуск із Windows. Позначте **Delete the application data**, щоб
+прибрати й `~/.meownitor`. Якщо встановите знову, хук і автозапуск повернуться самі.
+
+**macOS і Linux:** видалення програми не дістає до ваших налаштувань, тож спершу відкрийте ⚙, натисніть
+**Хук Claude Code → Зняти** і вимкніть автозапуск. Потім вийдіть через трей і видаліть програму:
+перетягніть її з Програм у Кошик, виконайте `sudo apt remove meownitor` чи `sudo dnf remove meownitor`
+або видаліть AppImage. У `~/.meownitor` лежать дані віджета; за бажанням видаліть і її.
 
 ## Як це працює
 
-- **Сесії.** `meownitor-hook.exe` — [хук Claude Code](https://code.claude.com/docs/en/hooks) на 11
+- **Сесії.** `meownitor-hook` — [хук Claude Code](https://code.claude.com/docs/en/hooks) на 11
   подій. На кожну подію він записує, що робить сесія, у `~/.meownitor/sessions/<id>.json`
   і виходить за мілісекунди. Він ніколи не гальмує Claude і не валить його. Віджет зводить ці файли із
   записами Claude Desktop (назви, архівна чи ні, посилання `claude://`) і з транскриптом сесії — так він
-  бачить хід, який ви зупинили. Тека саме `~/.meownitor`, а не AppData, бо Claude Desktop — пакет
-  MSIX: усе, що він запускає, бачить AppData через власну копію пакета, тож сесія в Desktop і сесія в
-  терміналі писали б у різні місця.
+  бачить хід, який ви зупинили. Тека на кожній системі — `~/.meownitor`. У Windows це не AppData, бо
+  Claude Desktop там — пакет MSIX: усе, що він запускає, бачить AppData через власну копію пакета, тож
+  сесія в Desktop і сесія в терміналі писали б у різні місця.
 - **Ліміти.** Раз на хвилину віджет робить той самий запит, що й `/usage` у Claude Code. Це запит про
   акаунт, а не виклик моделі, тож лімітів він не витрачає. Бере вхід Claude Code з
-  `~/.claude/.credentials.json` і оновлює токен так, як це робить Claude Code. Коли сервер зайнятий,
+  `~/.claude/.credentials.json` і оновлює токен так, як це робить Claude Code. У macOS Claude Code
+  натомість тримає вхід у Keychain, і там віджет його лише читає: коли цей токен спливає, картка
+  лишає останні числа (а якщо їх ще не було, пише, що чекає на Claude Code), доки той наступного
+  разу не запуститься й не оновить вхід. Коли сервер зайнятий,
   останні числа лишаються на картці, а запити йдуть рідше.
 - **Питання.** Сесія пише одну HTML-сторінку у свою теку раундів (`meownitor-hook where`) і у фоні
   запускає `meownitor-hook wait <name>`. Віджет показує сторінку у власному вікні. Коли ви
@@ -162,7 +177,7 @@ open src-tauri/target/release/bundle/macos/Meownitor.app
 
 - Усе лишається на вашому комп'ютері. Мережа — лише до Anthropic: запит про використання і оновлення
   токена, коли вхід Claude Code ось-ось спливе (записується назад у `~/.claude/.credentials.json`, як це
-  робить Claude Code). Токени ніде не логуються.
+  робить Claude Code; у macOS ніколи, там Keychain лише читається). Токени ніде не логуються.
 - Жодної телеметрії й аналітики.
 - Хук записує стан кожної сесії, назву поточного інструмента й одну коротку деталь: назву файлу, опис
   команди, шаблон пошуку. `events.log` тримає останні 512 КБ назв подій.

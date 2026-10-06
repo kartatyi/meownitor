@@ -12,14 +12,11 @@ answer reaches you through a background waiter — no polling, no copy-paste.
 ## Steps
 
 1. **The round folder and the kit** (Bash) — one command; it prints this session's round folder
-   (from `CLAUDE_CODE_SESSION_ID`, which Claude Code sets) and puts the kit next to the page. The
-   `h=…` line finds the hook on Windows or macOS; every Bash call starts afresh, so the commands below
-   begin with it too:
+   (from `CLAUDE_CODE_SESSION_ID`, which Claude Code sets) and puts the kit next to the page:
 
    ```bash
    k="${USERPROFILE:-$HOME}/.claude/skills/meownitor-round"   # this skill's folder
-   h="$USERPROFILE/.meownitor/bin/meownitor-hook.exe"; [ "$(uname)" = Darwin ] && h="$HOME/Library/Application Support/Meownitor/bin/meownitor-hook"   # the hook: Windows, macOS
-   d=$("$h" where) && cp "$k/round-kit.css" "$k/round-kit.js" "$d/" && echo "$d"
+   d=$("${USERPROFILE:-$HOME}/.meownitor/bin/meownitor-hook" where) && cp "$k/round-kit.css" "$k/round-kit.js" "$d/" && echo "$d"
    ```
 
 2. **Write the page** as `<folder>/<name>.html` — `<name>` is letters, digits, `-` and `_`. Start from a
@@ -50,8 +47,7 @@ answer reaches you through a background waiter — no polling, no copy-paste.
 3. **Wait in the background** (Bash with `run_in_background: true`):
 
    ```bash
-   h="$USERPROFILE/.meownitor/bin/meownitor-hook.exe"; [ "$(uname)" = Darwin ] && h="$HOME/Library/Application Support/Meownitor/bin/meownitor-hook"
-   "$h" wait <name>
+   "${USERPROFILE:-$HOME}/.meownitor/bin/meownitor-hook" wait <name>
    ```
 
    Then tell the user in one line that the question is waiting in the widget, and end the turn (or go
@@ -66,8 +62,7 @@ answer reaches you through a background waiter — no polling, no copy-paste.
    stops asking — it hides the question and closes its window, and the waiter exits by itself:
 
    ```bash
-   h="$USERPROFILE/.meownitor/bin/meownitor-hook.exe"; [ "$(uname)" = Darwin ] && h="$HOME/Library/Application Support/Meownitor/bin/meownitor-hook"
-   "$h" drop <name>
+   "${USERPROFILE:-$HOME}/.meownitor/bin/meownitor-hook" drop <name>
    ```
 
    Withdraw a round the same way when it no longer matters — the question changed, or you are asking

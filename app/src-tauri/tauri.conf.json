@@ -22,6 +22,8 @@
         "skipTaskbar": true,
         "focus": false,
         "focusable": false,
+        "acceptFirstMouse": true,
+        "visibleOnAllWorkspaces": true,
         "minWidth": 1,
         "minHeight": 1,
         "visible": false,

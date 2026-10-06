@@ -12,8 +12,9 @@
   var t=I18N.t;
   var KINDS={cat:['cat','catB'],blob:['blob','blob'],ghost:['ghost','ghost']};
   var CFG={kind:'cat',sound:true},SET={autostart:false,hook:null,confirm:null,err:'',ver:''};
-  // macOS has no «start with Windows»: there it is a login item (tauri-plugin-autostart's LaunchAgent).
-  var MAC=/Mac/.test(navigator.platform||navigator.userAgent);
+  // Only Windows has «start with Windows»: macOS and Linux start things at login (tauri-plugin-autostart's
+  // LaunchAgent, an XDG autostart entry), and the switch says so.
+  var OS=/Mac/.test(navigator.platform||navigator.userAgent)?'mac':/Linux/.test(navigator.platform||navigator.userAgent)?'linux':'';
   var minis={};Object.keys(KINDS).forEach(function(k){minis[k]=Pixel.Sprite(KINDS[k][0],KINDS[k][1],2,'idle');});
 
   // Live data from Rust: the session list (sessions.rs) and the plan limits (limits.rs).
@@ -101,7 +102,7 @@
       '<div class="sec"><div class="sl">'+t('character')+'</div><div class="kinds">'+Object.keys(KINDS).map(function(k){return '<button type="button" class="kd'+(CFG.kind===k?' on':'')+'" data-act="kind" data-kind="'+k+'"><span class="mini" data-mini="'+k+'"></span><span>'+t('kind.'+k)+'</span></button>';}).join('')+'</div></div>'+
       '<div class="opt"><span>'+t('language')+'</span><span class="seg">'+I18N.LANGS.map(function(l){return '<button type="button" class="'+(I18N.lang()===l[0]?'on':'')+'" data-act="lang" data-lang="'+l[0]+'">'+l[1]+'</button>';}).join('')+'</span></div>'+
       '<div class="opt"><span>'+t('sound')+'</span><button type="button" class="tgl'+(CFG.sound!==false?' on':'')+'" data-act="sound" title="'+t('sound.t')+'"></button></div>'+
-      '<div class="opt"><span>'+t(MAC?'autostart.mac':'autostart')+'</span><button type="button" class="tgl'+(SET.autostart?' on':'')+'" data-act="autostart" title="'+t('autostart.t')+'"></button></div>'+
+      '<div class="opt"><span>'+t(OS?'autostart.'+OS:'autostart')+'</span><button type="button" class="tgl'+(SET.autostart?' on':'')+'" data-act="autostart" title="'+t('autostart.t')+'"></button></div>'+
       hookHTML()+'<div class="ver">'+esc(SET.ver)+'</div></div>';
   }
   function strip(edge){var m=maxLim(),act=active();return '<div class="strip e'+edge+'">'+(act.length?act.map(function(s){return '<span class="dot '+s.state+'"></span>';}).join(''):'<span class="dot"></span>')+(m?'<span class="vb"><i style="height:'+Math.min(100,m.p)+'%;background:'+col(m.p)+'"></i></span>':'')+'</div>';}

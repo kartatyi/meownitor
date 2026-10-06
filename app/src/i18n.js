@@ -20,7 +20,7 @@
       'hook':'Claude Code hook','hook.on':'installed — sessions are visible','hook.off':'not installed — no sessions',
       'hook.uninstall':'Remove','hook.install':'Install',
       'back':'Back to sessions','character':'Character','sound':'Sound when a session asks','sound.t':'Sound',
-      'autostart':'Start with Windows','autostart.mac':'Open at login','autostart.t':'Autostart','autostart.err':'Autostart: {e}',
+      'autostart':'Start with Windows','autostart.mac':'Open at login','autostart.linux':'Start on login','autostart.t':'Autostart','autostart.err':'Autostart: {e}',
       'language':'Language','check':'check'
     },
     uk:{
@@ -41,7 +41,7 @@
       'hook':'Хук Claude Code','hook.on':'стоїть — сесії видно','hook.off':'не стоїть — сесій не видно',
       'hook.uninstall':'Зняти','hook.install':'Поставити',
       'back':'Назад до сесій','character':'Персонаж','sound':'Звук, коли сесія питає','sound.t':'Звук',
-      'autostart':'Запускати з Windows','autostart.mac':'Запускати під час входу','autostart.t':'Автозапуск','autostart.err':'Автозапуск: {e}',
+      'autostart':'Запускати з Windows','autostart.mac':'Запускати під час входу','autostart.linux':'Запускати під час входу','autostart.t':'Автозапуск','autostart.err':'Автозапуск: {e}',
       'language':'Мова','check':'перевірка'
     }
   };

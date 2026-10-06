@@ -36,6 +36,9 @@ struct State {
     hidden: bool,
     /// Click-through as the page last asked for it.
     ignore: bool,
+    /// The window was shown. Before that GTK has no window to make click-through (tao unwraps the
+    /// GdkWindow that isn't there yet), so click-through waits for `show`.
+    shown: bool,
     /// How far the watchdog has gone since the last poll (0 = not at all).
     step: u8,
 }
@@ -45,7 +48,7 @@ pub fn polled(w: &WebviewWindow, beat: &Beat) {
     let back = {
         let mut s = beat.0.lock().unwrap();
         s.last = Some(Instant::now());
-        let back = (s.step > 0).then_some((s.step, s.ignore));
+        let back = (s.step > 0).then_some((s.step, s.ignore && s.shown));
         s.step = 0;
         back
     };
@@ -55,9 +58,28 @@ pub fn polled(w: &WebviewWindow, beat: &Beat) {
     }
 }
 
-/// `ignore`: remembered, so it can be put back after the watchdog took the mouse.
-pub fn ignoring(beat: &Beat, on: bool) {
-    beat.0.lock().unwrap().ignore = on;
+/// `ignore`: remembered, so it can be put back after the watchdog took the mouse, and applied once
+/// the window is shown.
+pub fn ignoring(w: &WebviewWindow, beat: &Beat, on: bool) {
+    let shown = {
+        let mut s = beat.0.lock().unwrap();
+        s.ignore = on;
+        s.shown
+    };
+    if shown {
+        let _ = w.set_ignore_cursor_events(on);
+    }
+}
+
+/// `show`: the window comes up with the click-through the page asked for meanwhile.
+pub fn shown(w: &WebviewWindow, beat: &Beat) {
+    let ignore = {
+        let mut s = beat.0.lock().unwrap();
+        s.shown = true;
+        s.ignore
+    };
+    let _ = w.show();
+    let _ = w.set_ignore_cursor_events(ignore);
 }
 
 /// `page_hidden`: visibility changes start the count over.
