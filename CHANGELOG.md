@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - macOS and Linux. macOS gets one universal disk image for Apple silicon and Intel. It is not
   signed with a Developer ID, so the first start needs **Open Anyway**. macOS support is
