@@ -109,6 +109,7 @@ jobs:
         with:
           name: dist-windows
           path: dist/*
+          retention-days: 1
 
   macos:
     needs: version
@@ -176,6 +177,7 @@ jobs:
         with:
           name: dist-macos
           path: dist/*
+          retention-days: 1
 
   # On the oldest supported Ubuntu, so the packages run on systems with an older glibc too.
   linux:
@@ -239,6 +241,7 @@ jobs:
         with:
           name: dist-linux
           path: dist/*
+          retention-days: 1
 
   publish:
     needs: [windows, macos, linux]
