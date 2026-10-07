@@ -85,4 +85,5 @@ jobs:
         with:
           name: smoke-${{ runner.os }}
           path: app/src-tauri/smoke-*.png
+          retention-days: 1
           if-no-files-found: ignore
