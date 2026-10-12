@@ -13,6 +13,9 @@
 - An answer with no pick but a comment reads `1 — own option`.
 - The skill is split: a short `SKILL.md` with the steps, and `reference.md` with frames, numbers and
   the rest of the kit, read when a page needs them.
+- Windows: the widget no longer gets lost behind other windows some time into a run. Every 2 s it
+  checks that no ordinary window sits above it and goes back on top if one does, without taking
+  the focus; `widget.log` names the window it was under.
 
 ## 0.2.0
 
