@@ -140,7 +140,7 @@ fn write_with_backup(s: &Value) -> Result<(), String> {
 }
 
 /// Copies the hook next to the widget into the data folder and adds it to every event it needs;
-/// entries already there are pointed at that copy.
+/// entries already there are pointed at that copy. The meownitor-round skill is installed with it.
 pub fn install() -> Result<Status, String> {
     let target = installed_hook().ok_or("no data folder")?;
     let source = std::env::current_exe()
@@ -185,6 +185,8 @@ pub fn install() -> Result<Status, String> {
         }
     }
     write_with_backup(&s)?;
+    // the skill that asks the user through the widget goes in with the hook
+    let _ = crate::skill::install();
     Ok(status())
 }
 
@@ -207,7 +209,7 @@ pub fn refresh_copy() {
     }
 }
 
-/// Removes only our entries; an event left with nothing is removed too.
+/// Removes only our entries; an event left with nothing is removed too, and so is the skill.
 pub fn uninstall() -> Result<Status, String> {
     let mut s = read_settings()?;
     if let Some(hooks) = s.get_mut("hooks").and_then(|h| h.as_object_mut()) {
@@ -222,6 +224,7 @@ pub fn uninstall() -> Result<Status, String> {
         }
     }
     write_with_backup(&s)?;
+    crate::skill::remove();
     Ok(status())
 }
 
