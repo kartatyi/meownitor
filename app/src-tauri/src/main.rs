@@ -9,6 +9,7 @@ mod i18n;
 mod lifecycle;
 mod limits;
 mod msix;
+mod ontop;
 mod rounds;
 mod sessions;
 mod watchdog;
@@ -347,6 +348,7 @@ fn main() {
             sessions::spawn(app.handle().clone());
             limits::spawn(app.handle().clone());
             watchdog::spawn(app.handle().clone());
+            ontop::spawn(app.handle().clone());
             Ok(())
         })
         .build(context)

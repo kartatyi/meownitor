@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Windows: the widget no longer gets lost behind other windows some time into a run. Every 2 s it
+  checks that no ordinary window sits above it and goes back on top if one does, without taking
+  the focus; `widget.log` names the window it was under.
+
 ## 0.2.0
 
 - macOS and Linux. macOS gets one universal disk image for Apple silicon and Intel. It is not
