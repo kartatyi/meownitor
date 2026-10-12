@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- The `meownitor-round` skill comes with the widget: installing the hook puts it into
+  `~/.claude/skills/`, every start of an updated widget brings the new one, removing the hook takes
+  it away. No zip to unpack.
+- The page kit is built into the widget and served next to every page — a session no longer copies
+  it into the round folder, and a page always gets the kit of the widget that shows it.
+- `meownitor-hook ask <name>` checks the page before waiting: no title, no question for the kit, no
+  way for the answer back — reported at once instead of a question that never arrives. Given a path
+  to a page made elsewhere, it copies the page in first. `wait` still works.
+- An answer with no pick but a comment reads `1 — own option`.
+- The skill is split: a short `SKILL.md` with the steps, and `reference.md` with frames, numbers and
+  the rest of the kit, read when a page needs them.
+
 ## 0.2.0
 
 - macOS and Linux. macOS gets one universal disk image for Apple silicon and Intel. It is not

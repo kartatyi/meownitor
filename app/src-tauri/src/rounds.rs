@@ -5,6 +5,8 @@
 // scheme, which also takes the page's POST /answer — the same contract as the design pages — and
 // POST /size, the page's own height, so the window fits its content. A round the session withdraws
 // (`meownitor-hook drop <name>` leaves <name>.dropped) leaves the list and closes its window.
+// The page kit (round-kit.css, round-kit.js) is built into the widget and served next to every page,
+// so a page links it by its bare name and always gets the kit of the widget that shows it.
 use std::path::PathBuf;
 use std::time::Duration;
 use tauri::http::{Request, Response};
@@ -19,6 +21,9 @@ pub struct Pending {
     pub title: String,
     pub since: u64,
 }
+
+const KIT_CSS: &[u8] = include_bytes!("../../../skill/meownitor-round/round-kit.css");
+const KIT_JS: &[u8] = include_bytes!("../../../skill/meownitor-round/round-kit.js");
 
 pub fn dir() -> Option<PathBuf> {
     crate::sessions::data_dir().map(|d| d.join("rounds"))
@@ -316,6 +321,11 @@ pub fn handle<R: Runtime>(
     let (Some(root), [sid, file]) = (dir(), parts.as_slice()) else {
         return reply(404, "text/plain", b"not found".to_vec());
     };
+    match *file {
+        "round-kit.css" => return reply(200, "text/css", KIT_CSS.to_vec()),
+        "round-kit.js" => return reply(200, "text/javascript", KIT_JS.to_vec()),
+        _ => {}
+    }
     let (stem, ext) = file.rsplit_once('.').unwrap_or((file, ""));
     let mime = match ext {
         "html" => "text/html; charset=utf-8",

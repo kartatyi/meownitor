@@ -11,6 +11,7 @@ mod limits;
 mod msix;
 mod rounds;
 mod sessions;
+mod skill;
 mod watchdog;
 
 use serde::Serialize;
@@ -344,6 +345,11 @@ fn main() {
                 })
                 .build(app)?;
             hooks::refresh_copy();
+            // The skill the sessions read is the one this widget came with (release builds only,
+            // like the hook's copy).
+            if !cfg!(debug_assertions) && hooks::status().installed {
+                let _ = skill::install();
+            }
             sessions::spawn(app.handle().clone());
             limits::spawn(app.handle().clone());
             watchdog::spawn(app.handle().clone());
