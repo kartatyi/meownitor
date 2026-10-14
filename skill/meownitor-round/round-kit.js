@@ -423,15 +423,16 @@
     else say('', done ? word('ready') : word('choose'));
   }
 
-  // «1 — A» per question (several picks «2 — A, C»), the comment indented under it — in English
-  // whatever the page's language, so a session always reads the same shape
+  // «1 — A» per question (several picks «2 — A, C», no pick but a comment «3 — own option»), the
+  // comment indented under it — in English whatever the page's language, so a session always reads
+  // the same shape
   function send() {
     if (!sendBtn || sendBtn.disabled) return;
     var lines = [doc.title.trim()], any = false;
     qs.forEach(function (q) {
       var vars = variants(q), id = q.getAttribute('data-q'), t = comment(q).value.trim();
       var picked = vars.filter(function (v) { return v.classList.contains('picked'); }).map(function (v) { return v.getAttribute('data-v'); });
-      if (vars.length) lines.push(id + ' — ' + (picked.length ? picked.join(', ') : 'no pick'));
+      if (vars.length) lines.push(id + ' — ' + (picked.length ? picked.join(', ') : t ? 'own option' : 'no pick'));
       else lines.push(id + ':' + (t ? '' : ' no answer'));
       if (picked.length || t) any = true;
       if (t) lines.push('  comment: ' + t.replace(/\r?\n/g, '\n  '));

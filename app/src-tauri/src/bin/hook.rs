@@ -150,12 +150,16 @@ fn late_answers(rounds: &Path, sid: &str) -> String {
 /// `wait <name>` blocks until the user sends the answer, prints it and exits — run it in the
 /// background, its exit is what brings the session back. It gives up after a day (or the hours
 /// given after the name); an answer sent later comes with the user's next message (`late_answers`).
+/// `ask <name>` checks the page first — a page the widget can't show or whose answer can't come
+/// back is reported at once instead of being waited on — then waits like `wait`. Given a path to a
+/// page made elsewhere (a project's own design page), it copies it into the round folder first,
+/// named after the file (without `.standalone`).
 /// `drop <name>` withdraws a round the user answered in the chat: the widget stops showing it and
 /// closes its window, its waiter exits.
 /// The session id comes from the CLAUDE_CODE_SESSION_ID that Claude Code gives every command it runs.
 fn round_command(args: &[String]) -> Option<i32> {
     let cmd = args.get(1)?.as_str();
-    if !["where", "wait", "drop"].contains(&cmd) {
+    if !["where", "ask", "wait", "drop"].contains(&cmd) {
         return None;
     }
     let sid = std::env::var("CLAUDE_CODE_SESSION_ID").unwrap_or_default();
@@ -173,17 +177,36 @@ fn round_command(args: &[String]) -> Option<i32> {
         println!("{}", dir.display());
         return Some(0);
     }
-    let name = args
-        .get(2)
-        .map(|n| n.trim_end_matches(".html").to_string())
-        .unwrap_or_default();
+    let arg = args.get(2).cloned().unwrap_or_default();
+    // ask <path to a page>: the page comes into the round folder under its own name
+    let from = Path::new(&arg);
+    let outside = cmd == "ask"
+        && arg.ends_with(".html")
+        && from.is_file()
+        && from.parent().and_then(|p| p.canonicalize().ok()) != dir.canonicalize().ok();
+    let name = from
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default()
+        .trim_end_matches(".html")
+        .trim_end_matches(".standalone")
+        .to_string();
     if name.is_empty()
         || !name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        eprintln!("usage: meownitor-hook wait|drop <round-name>   (letters, digits, - and _)");
+        eprintln!(
+            "usage: meownitor-hook ask|wait|drop <round-name>   (letters, digits, - and _)
+       meownitor-hook ask <path to a page>.html"
+        );
         return Some(2);
+    }
+    if outside {
+        if let Err(e) = std::fs::copy(from, dir.join(format!("{name}.html"))) {
+            eprintln!("could not copy {arg} into {}: {e}", dir.display());
+            return Some(1);
+        }
     }
     if !dir.join(format!("{name}.html")).exists() {
         eprintln!("no round {name}.html in {}", dir.display());
@@ -197,6 +220,17 @@ fn round_command(args: &[String]) -> Option<i32> {
         }
         println!("Round {name} withdrawn from the widget.");
         return Some(0);
+    }
+    if cmd == "ask" {
+        let html = std::fs::read_to_string(dir.join(format!("{name}.html"))).unwrap_or_default();
+        let problems = page_problems(&html);
+        if !problems.is_empty() {
+            eprintln!("{name}.html is not asked — fix the page and run ask again:");
+            for p in problems {
+                eprintln!("  - {p}");
+            }
+            return Some(2);
+        }
     }
     let answer = dir.join(format!("{name}.answer.md"));
     let hours: u64 = args.get(3).and_then(|h| h.parse().ok()).unwrap_or(24);
@@ -221,6 +255,36 @@ fn round_command(args: &[String]) -> Option<i32> {
     }
     println!("No answer to {name} — gave up waiting. If the user answers later, it comes with their next message.");
     Some(1)
+}
+
+/// What keeps a round page from working: no title to show it by, no question for the kit to make
+/// answerable, no way for the answer to come back.
+fn page_problems(html: &str) -> Vec<&'static str> {
+    let lower = html.to_ascii_lowercase();
+    let mut out = Vec::new();
+    let title = lower
+        .find("<title>")
+        .map(|a| a + 7)
+        .and_then(|a| Some(&lower[a..a + lower[a..].find("</title>")?]));
+    if title.is_none_or(|t| t.trim().is_empty()) {
+        out.push("no <title> — the widget's row and the answer's first line are made from it");
+    }
+    if lower.contains("round-kit.js") {
+        if !lower.contains("round-kit.css") {
+            out.push("round-kit.js is linked, round-kit.css is not");
+        }
+        let is_q = |c: &str| c.split_whitespace().any(|x| x == "q");
+        if !lower
+            .split("class=\"")
+            .skip(1)
+            .any(|rest| is_q(rest.split('"').next().unwrap_or("")))
+        {
+            out.push("no section.q — the kit has no question to make answerable");
+        }
+    } else if !lower.contains("/answer") {
+        out.push("neither round-kit.js nor a POST to /answer — the answer has no way back");
+    }
+    out
 }
 
 fn main() {
@@ -338,6 +402,21 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_page_that_cannot_work_is_not_asked() {
+        let kit =
+            r#"<link rel="stylesheet" href="round-kit.css"><script src="round-kit.js"></script>"#;
+        let good = format!(r#"<title>Pick</title>{kit}<section class="q" data-q="1"></section>"#);
+        assert!(page_problems(&good).is_empty());
+        let two = format!(r#"<title>Pick</title>{kit}<section class="x q"></section>"#);
+        assert!(page_problems(&two).is_empty());
+        let quiet = format!(r#"<title> </title>{kit}<section class="qq"></section>"#);
+        assert_eq!(page_problems(&quiet).len(), 2);
+        let own = "<title>Own</title><script>fetch('/answer',{method:'POST'})</script>";
+        assert!(page_problems(own).is_empty());
+        assert_eq!(page_problems("<title>Mute</title><p>hi</p>").len(), 1);
+    }
 
     #[test]
     fn a_late_answer_comes_once_and_an_old_one_never() {

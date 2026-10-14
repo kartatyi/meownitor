@@ -144,16 +144,14 @@ Desktop for Linux, so there the widget shows the sessions you run in a terminal.
 2. The pet appears in the bottom-right corner. Click it to open the card, then click the gear ⚙.
 3. **Claude Code hook → Install.** This adds the widget's hook to `~/.claude/settings.json`. Your other
    hooks stay as they are, and a backup of the file goes next to it. A session shows up on the next
-   thing it does.
+   thing it does. The `meownitor-round` skill, for questions with pictures, goes into
+   `~/.claude/skills/` with it, and every update of the widget brings its own.
 4. For the plan limits, sign in to Claude Code once: run `claude`, then `/login`. On macOS the widget
    reads that sign-in from the Keychain, and macOS may ask once to let `security` read
    «Claude Code-credentials»: **Always Allow**.
-5. *Optional, for questions with pictures:* unzip `meownitor-round-skill.zip` from the release into
-   `~/.claude/skills/` (`%USERPROFILE%\.claude\skills\` on Windows), so that you have
-   `~/.claude/skills/meownitor-round/SKILL.md`. Claude Code picks the skill up in new sessions.
 
 **Portable on Windows:** unzip `Meownitor_<version>_x64-portable.zip` anywhere, run `meownitor.exe`
-and follow steps 2–5.
+and follow steps 2–4.
 
 ### Using it
 
@@ -209,9 +207,9 @@ flowchart LR
   until Claude Code next runs and renews the sign-in. When the server is busy, the last numbers stay on the card and
   the requests come less often.
 - **Questions.** A session writes one HTML page into its round folder (`meownitor-hook where`) and
-  runs `meownitor-hook wait <name>` in the background. The widget serves the page in a window of
-  its own. When you press **Send**, the answer lands next to the page and the waiting command hands it
-  back to the session. It waits up to a day; an answer sent after it stopped reaches the session with
+  runs `meownitor-hook ask <name>` in the background, which checks the page and waits. The widget
+  serves the page, and the page kit built into it, in a window of its own. When you press **Send**,
+  the answer lands next to the page and the waiting command hands it back to the session. It waits up to a day; an answer sent after it stopped reaches the session with
   your next message to it. When you answer in the chat instead, the session takes the question back
   (`meownitor-hook drop <name>`) and the widget stops asking. The skill's [`SKILL.md`](skill/meownitor-round/SKILL.md) is the full contract.
 
