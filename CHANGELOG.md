@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+- The widget also docks at the top edge of the screen, to one of three magnets — the left corner,
+  the centre or the right corner — and the card drops down from there on hover.
+- Three looks at an edge, picked in the settings: the strip of dots (as before), the pet peeking out
+  (half of it from a side, upside down from the top) or a thin line that pulses and lets the pet peek
+  out when a session waits for you.
+- Collapsed at an edge, the widget nudges out once when a session starts waiting.
+- The unused part of a limit bar has a lighter track, so a nearly spent limit no longer looks full.
+- Motion: at an edge the card slides out of the screen edge on hover and back into it when the
+  cursor leaves, and the collapsed view comes out after it; the card unfolds from the pet and folds
+  back into it; at the line the pet comes out from behind it when a session starts waiting.
+- The card turns over to the settings in one smooth motion. Near the bottom of the screen, where the
+  taller side has to move up, the pet hops onto its new top.
+- The pet comes back to where you put it after its card is opened and folded again. Near a screen
+  corner the card is pushed onto the screen, and the pet used to follow it there; the same went for
+  the settings and for the card opened from an edge.
+- Windows: the window moves and resizes in one step, so the content no longer jumps at the right
+  edge when its size changes.
+
 ## 0.2.0
 
 - macOS and Linux. macOS gets one universal disk image for Apple silicon and Intel. It is not

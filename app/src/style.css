@@ -2,14 +2,14 @@
   --font:"Segoe UI",system-ui,sans-serif;
   --card:#141C2B; --line:#26324A; --line2:#35435D;
   --ink:#F2F6FF; --ink2:#C3CCDB; --ink3:#8E9AAE; --ink4:#5E6A80;
-  --fill1:#222D42; --hover:#1E2A3D;
+  --fill1:#222D42; --hover:#1E2A3D; --track:#717D95;
   --primary:#54A9FF; --ok:#5DC264; --warn:#FFAE43; --warn-weak:rgba(255,174,67,.14); --danger:#FC725A;
 }
 @media (prefers-color-scheme: light){
   :root{
     --card:#FFFFFF; --line:#E1E5EA; --line2:#CBD2DA;
     --ink:#1C1F23; --ink2:#4B5462; --ink3:#7C8694; --ink4:#A5ADB8;
-    --fill1:#E7EAF0; --hover:#F0F3F8;
+    --fill1:#E7EAF0; --hover:#F0F3F8; --track:#B4BCC7;
     --primary:#0064FA; --ok:#2E9E3C; --warn:#CF7300; --warn-weak:rgba(252,136,0,.12); --danger:#E0331B;
   }
 }
@@ -67,7 +67,7 @@ canvas.spr{display:block;image-rendering:pixelated}
 .wg .lr{display:grid;grid-template-columns:58px 32px 1fr auto;gap:8px;align-items:center;height:22px}
 .wg .ll{color:var(--ink2)}
 .wg .lp{font-variant-numeric:tabular-nums;text-align:right}
-.wg .lb{height:5px;border-radius:3px;background:var(--fill1);overflow:hidden}
+.wg .lb{height:5px;border-radius:3px;background:var(--track);overflow:hidden}
 .wg .lb i{display:block;height:100%}
 .wg .rs{display:inline-flex;align-items:center;gap:3px;color:var(--ink3);font-size:11.5px;font-variant-numeric:tabular-nums}
 .wg .rs svg{width:12px;height:12px}
@@ -77,22 +77,67 @@ canvas.spr{display:block;image-rendering:pixelated}
 .wg .nolim code{font-family:Consolas,monospace;background:var(--fill1);padding:0 4px;border-radius:4px;color:var(--ink2)}
 .wg .demo{color:var(--ink4);font-size:11px;padding:0 10px 8px}
 
-.strip{display:flex;flex-direction:column;align-items:center;gap:8px;width:18px;padding:10px 0;border:1px solid var(--line2);background:var(--card);cursor:grab}
+/* Collapsed at an edge. .edge is transparent room on the inner side for the «bump». */
+.edge{display:flex;cursor:grab}
+.edge.er{padding-left:8px;justify-content:flex-end}
+.edge.el{padding-right:8px}
+.edge.et{padding-bottom:8px}
+.strip{display:flex;flex-direction:column;align-items:center;gap:8px;width:18px;padding:10px 0;border:1px solid var(--line2);background:var(--card)}
 .strip.er{border-right:0;border-radius:8px 0 0 8px}
 .strip.el{border-left:0;border-radius:0 8px 8px 0}
-.strip .vb{width:5px;height:46px;border-radius:3px;background:var(--fill1);display:flex;align-items:flex-end;margin-top:6px;overflow:hidden}
+.strip.et{flex-direction:row;width:auto;height:18px;padding:0 10px;border-top:0;border-radius:0 0 8px 8px}
+.strip .vb{width:5px;height:46px;border-radius:3px;background:var(--track);display:flex;align-items:flex-end;margin-top:6px;overflow:hidden;flex:none}
 .strip .vb i{display:block;width:100%}
+.strip .vb.h{width:46px;height:5px;margin:0 0 0 6px}
+.strip .vb.h i{height:100%;width:auto}
+.strip.mini{gap:6px;padding:7px 0}
+.strip.mini.et{padding:0 7px}
+.strip.mini .vb{height:28px;margin-top:2px}
+.strip.mini .vb.h{width:28px;height:5px;margin:0 0 0 2px}
+/* The pet peeking out: half of it from a side, the top of it upside down from the top edge. */
+.pk{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.edge.el .pk{align-items:flex-start}
+.edge.et .pk{flex-direction:row;align-items:flex-start;gap:3px}
+.peek{overflow:hidden;flex:none}
+.edge.er .peek,.edge.el .peek{width:38px;height:64px}
+.edge.el .peek canvas{transform:scaleX(-1);margin-left:-34px}
+.edge.et .peek{width:72px;height:40px}
+.edge.et .peek canvas{transform:scaleY(-1);margin-top:-24px}
+/* The line; .lnh widens what the cursor can catch. */
+.lnw{display:flex;align-items:center;gap:4px}
+.edge.el .lnw{flex-direction:row-reverse}
+.edge.et .lnw{flex-direction:column-reverse;gap:0}
+.edge.et .lnw .peek{margin-top:-4px}
+.lnh{padding-left:8px}
+.edge.el .lnh{padding:0 8px 0 0}
+.edge.et .lnh{padding:0 0 8px}
+.ln{width:4px;height:56px;border-radius:2px 0 0 2px;background:var(--ink4);opacity:.7}
+.edge.el .ln{border-radius:0 2px 2px 0}
+.edge.et .ln{width:64px;height:4px;border-radius:0 0 2px 2px}
+.ln.run{background:var(--primary);opacity:.9}
+.ln.wait{background:var(--warn);opacity:1;animation:pulse 1.6s ease-in-out infinite}
+/* Once, when a session starts waiting: out a little and back. */
+.edge.bump>*{animation:bump-r .7s ease-out}
+.edge.el.bump>*{animation-name:bump-l}
+.edge.et.bump>*{animation-name:bump-t}
+@keyframes bump-r{25%{transform:translateX(-7px)}50%{transform:none}70%{transform:translateX(-3px)}}
+@keyframes bump-l{25%{transform:translateX(7px)}50%{transform:none}70%{transform:translateX(3px)}}
+@keyframes bump-t{25%{transform:translateY(7px)}50%{transform:none}70%{transform:translateY(3px)}}
 
-.cardwrap{perspective:900px}
-.wg{transition:transform .14s ease-in}
-.wg.fl-out{transform:rotateY(90deg)}
-.wg.fl-in{transform:rotateY(-90deg);transition:none}
 .wg .sec{padding:8px 10px 8px}
 .wg .sl{font-size:11.5px;color:var(--ink3);margin-bottom:6px}
 .wg .kinds{display:flex;gap:6px}
 .wg .kd{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0 5px;border:1px solid var(--line);border-radius:8px;background:transparent;cursor:pointer;font-size:11.5px;color:var(--ink2)}
 .wg .kd:hover{border-color:var(--line2)}
 .wg .kd.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary);color:var(--ink)}
+/* The edge looks' previews; the pet in them is a picture, not something to pet or hit-test. */
+.wg .kd .pv{height:30px;display:flex;align-items:center;justify-content:center}
+.wg .kd .pv canvas{pointer-events:none}
+.wg .kd .st1{flex-direction:column;gap:3px;height:auto;padding:4px 3px;border:1px solid var(--line2);border-radius:5px;margin:0 0 2px}
+.wg .kd .st1 .dot{width:5px;height:5px;animation:none}
+.wg .kd .pk1{width:22px;height:30px;overflow:hidden}
+.wg .kd .pk1 canvas{display:block;margin-left:-7px}
+.wg .kd .ln1::before{content:"";width:3px;height:26px;border-radius:2px;background:var(--warn)}
 .wg .opt{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-top:1px solid var(--line)}
 .wg .opt small{font-size:11px}
 .wg .okc{color:var(--ok)}

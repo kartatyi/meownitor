@@ -141,7 +141,7 @@
     return p;
   }
   function draw(sp,now){
-    var p=params(sp,now),b=sp.kind==='blob'?drawBlob(p,sp.pal):sp.kind==='ghost'?drawGhost(p,sp.pal):drawCat(p,sp.pal);fx(b,p);sp.buf=b;
+    var p=params(sp,now),b=sp.kind==='blob'?drawBlob(p,sp.pal):sp.kind==='ghost'?drawGhost(p,sp.pal):drawCat(p,sp.pal);if(!sp.nofx)fx(b,p);sp.buf=b;
     var d=sp.img.data;for(var i=0;i<W*H;i++){var k=b[i];if(!k){d[i*4+3]=0;continue;}var c=rgb(sp.pal,k);d[i*4]=c[0];d[i*4+1]=c[1];d[i*4+2]=c[2];d[i*4+3]=255;}
     sp.octx.putImageData(sp.img,0,0);sp.ctx.imageSmoothingEnabled=false;sp.ctx.clearRect(0,0,sp.canvas.width,sp.canvas.height);sp.ctx.drawImage(sp.off,0,0,sp.canvas.width,sp.canvas.height);
   }
@@ -153,11 +153,14 @@
       var r=sp.canvas.getBoundingClientRect();if(!r.width)return;
       var dx=PTR.x-(r.left+r.width/2),dy=PTR.y-(r.top+r.height*0.4);
       sp.lookX=dx>r.width*0.45?1:dx<-r.width*0.45?-1:0;sp.lookY=dy>r.height*0.5?1:dy<-r.height*0.5?-1:0;
+      // A mirrored sprite (peeking from the left or the top edge) looks the other way in its own pixels.
+      if(sp.flipX)sp.lookX=-sp.lookX;if(sp.flipY)sp.lookY=-sp.lookY;
       draw(sp,now);
     });
   }
   setInterval(tick,70);
-  // Is the pixel under (x,y) — in the canvas's own CSS pixels — part of the sprite?
-  function opaqueAt(sp,x,y){if(!sp.buf)return false;var px=Math.floor(x/sp.scale),py=Math.floor(y/sp.scale);if(px<0||py<0||px>=W||py>=H)return false;return !!sp.buf[py*W+px];}
+  // Is the pixel under (x,y) — in the canvas's own CSS pixels — part of the sprite? A canvas drawn
+  // mirrored (flipX / flipY, a CSS flip) is looked up mirrored.
+  function opaqueAt(sp,x,y){if(!sp.buf)return false;var px=Math.floor(x/sp.scale),py=Math.floor(y/sp.scale);if(px<0||py<0||px>=W||py>=H)return false;if(sp.flipX)px=W-1-px;if(sp.flipY)py=H-1-py;return !!sp.buf[py*W+px];}
   window.Pixel={Sprite:Sprite,pointer:PTR,opaqueAt:opaqueAt,PAL:PAL};
 })();

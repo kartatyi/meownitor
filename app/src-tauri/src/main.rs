@@ -93,13 +93,36 @@ fn poll(window: WebviewWindow, beat: State<watchdog::Beat>) -> Poll {
     snapshot(&window)
 }
 
+/// Moves and sizes the window in one step. On Windows tao's set_size and set_position are two
+/// SetWindowPos calls, and a frame shown between them has the window at its new size but its old
+/// place — at the right edge the content jumped right and back.
 #[tauri::command]
 fn place(window: WebviewWindow, x: i32, y: i32, w: u32, h: u32) {
+    #[cfg(windows)]
+    if let Ok(hwnd) = window.hwnd() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER,
+        };
+        let flags = SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE;
+        unsafe {
+            SetWindowPos(
+                hwnd.0 as _,
+                std::ptr::null_mut(),
+                x,
+                y,
+                w as i32,
+                h as i32,
+                flags,
+            )
+        };
+        return;
+    }
     let _ = window.set_size(PhysicalSize::new(w, h));
     let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
-/// How to start: `MEOWNITOR_START` (card, settings, dock-l, dock-r, dock-r-open), `MEOWNITOR_MOOD` and
+/// How to start: `MEOWNITOR_START` (card, settings, dock-l, dock-r, dock-t, `-open` to start slid out,
+/// `:strip` / `:peek` / `:line` for the edge look, e.g. dock-t-open:peek), `MEOWNITOR_MOOD` and
 /// `MEOWNITOR_ROUND` (<session id>/<round name>, opened right away) —
 /// so every mode can be opened and captured without touching the mouse.
 #[tauri::command]
