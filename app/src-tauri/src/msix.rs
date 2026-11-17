@@ -65,7 +65,7 @@ fn copy_missing(from: &Path, to: &Path, depth: u8) {
 }
 
 /// A session started before the move runs the hook from the old folder: that copy becomes this
-/// version. A copy that is running (a session's `wait`) can't be overwritten, only renamed aside.
+/// version. A copy that is running (a session's `wait`) is renamed aside (hooks.rs `put_copy`).
 /// Release builds only, so a debug build never swaps the hook under a running session.
 fn swap_hook(old: &Path) {
     let Some(ours) = std::env::current_exe()
@@ -74,29 +74,20 @@ fn swap_hook(old: &Path) {
     else {
         return;
     };
-    if cfg!(debug_assertions)
-        || !old.exists()
-        || !ours.exists()
-        || std::fs::read(old).ok() == std::fs::read(&ours).ok()
-    {
+    if cfg!(debug_assertions) || !old.exists() || !ours.exists() {
         return;
     }
-    if std::fs::copy(&ours, old).is_err() {
-        let secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        if std::fs::rename(old, old.with_extension(format!("{secs}.old"))).is_err()
-            || std::fs::copy(&ours, old).is_err()
-        {
-            crate::watchdog::log(&format!(
-                "could not update the old hook copy {}",
-                old.display()
-            ));
-            return;
-        }
+    crate::hooks::clear_aside(old);
+    if std::fs::read(old).ok() == std::fs::read(&ours).ok() {
+        return;
     }
-    crate::watchdog::log(&format!("updated the old hook copy {}", old.display()));
+    match crate::hooks::put_copy(&ours, old) {
+        Ok(()) => crate::watchdog::log(&format!("updated the old hook copy {}", old.display())),
+        Err(e) => crate::watchdog::log(&format!(
+            "could not update the old hook copy {}: {e}",
+            old.display()
+        )),
+    }
 }
 
 /// Started with Windows as Claude Widget: that entry gives way to one under this name, for this exe.
