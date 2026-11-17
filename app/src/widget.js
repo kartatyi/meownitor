@@ -27,7 +27,9 @@
     var w=s.what||'',x='',m=/^Чекає дозволу · (.+)$/.exec(w);
     if(m){w='@perm';x=m[1];}
     w=LEGACY[w]||w;
-    return {code:w,text:(w.charAt(0)==='@'?t('what.'+w.slice(1)):w)+(x?' · '+x:'')+(s.detail?' · '+s.detail:'')};
+    // A turn that ended on an API error brings the error's code: worded where the widget has words for it.
+    var d=s.detail||'';if(w==='@failed'&&d){var e=t('err.'+d);if(e!=='err.'+d)d=e;}
+    return {code:w,text:(w.charAt(0)==='@'?t('what.'+w.slice(1)):w)+(x?' · '+x:'')+(d?' · '+d:'')};
   }
   // Rust leaves the title empty for a session Desktop does not know; it is named here, in the UI's language.
   function titleOf(s){return s.title||(s.cwd?t('terminal',{name:s.cwd.replace(/[\\\/]+$/,'').split(/[\\\/]/).pop()}):t('session',{id:s.sid.slice(0,8)}));}

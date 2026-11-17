@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-const EVENTS: [&str; 11] = [
+const EVENTS: [&str; 12] = [
     "SessionStart",
     "SessionEnd",
     "UserPromptSubmit",
@@ -16,6 +16,7 @@ const EVENTS: [&str; 11] = [
     "Notification",
     "PermissionRequest",
     "Stop",
+    "StopFailure",
     "SubagentStart",
     "SubagentStop",
 ];
@@ -185,6 +186,7 @@ pub fn install() -> Result<Status, String> {
         }
     }
     write_with_backup(&s)?;
+    crate::config::merge(&json!({ "hookEvents": EVENTS.len() }));
     // the skill that asks the user through the widget goes in with the hook
     let _ = crate::skill::install();
     Ok(status())
@@ -206,6 +208,25 @@ pub fn refresh_copy() {
     }
     if std::fs::read(&source).ok() != std::fs::read(&target).ok() {
         let _ = std::fs::copy(&source, &target);
+    }
+}
+
+/// The hook is in, but the widget that put it there listened to other events than this one does
+/// (config.json `hookEvents` is how many it installed; a widget from before kept no count).
+fn behind() -> bool {
+    let installed = read_settings().map(|s| count_ours(&s)).unwrap_or(0);
+    let counted = crate::config::read()
+        .get("hookEvents")
+        .and_then(|v| v.as_u64());
+    installed > 0 && counted != Some(EVENTS.len() as u64)
+}
+
+/// An updated widget may listen to more events than the one that installed the hook (StopFailure
+/// came later): its first start adds what is missing — once, so an entry the user takes out by
+/// hand afterwards stays out. Release builds only, like the hook's copy.
+pub fn catch_up() {
+    if !cfg!(debug_assertions) && behind() {
+        let _ = install();
     }
 }
 
@@ -268,6 +289,23 @@ mod tests {
         assert_eq!(count_ours(&v), EVENTS.len());
         assert!(status().installed);
         assert!(!elsewhere());
+        assert!(!behind());
+
+        // A hook installed by a widget from before an event was added: seen, and one install adds it.
+        let mut old: Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        old["hooks"]
+            .as_object_mut()
+            .unwrap()
+            .remove("StopFailure")
+            .unwrap();
+        std::fs::write(&settings, old.to_string()).unwrap();
+        crate::config::merge(&json!({ "hookEvents": EVENTS.len() - 1 }));
+        assert!(behind());
+        install().unwrap();
+        assert!(!behind());
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(count_ours(&v), EVENTS.len());
 
         // Entries left pointing at an old copy are re-pointed, not doubled.
         let path = installed_hook()

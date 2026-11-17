@@ -7,14 +7,16 @@
 // (`meownitor-hook drop <name>` leaves <name>.dropped) leaves the list and closes its window.
 // The page kit (round-kit.css, round-kit.js) is built into the widget and served next to every page,
 // so a page links it by its bare name and always gets the kit of the widget that shows it.
-use std::path::PathBuf;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant, SystemTime};
 use tauri::http::{Request, Response};
 use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, Runtime, UriSchemeContext, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder,
 };
 
+#[derive(Clone)]
 pub struct Pending {
     pub sid: String,
     pub name: String,
@@ -44,58 +46,165 @@ fn title_of(html: &str) -> Option<String> {
     (!t.is_empty()).then(|| t.to_string())
 }
 
-/// Rounds that have no answer yet and that their session hasn't withdrawn (`meownitor-hook drop`).
-pub fn pending() -> Vec<Pending> {
-    dir().map(|root| pending_in(&root)).unwrap_or_default()
+fn modified_of(p: &Path) -> Option<SystemTime> {
+    std::fs::metadata(p).and_then(|m| m.modified()).ok()
 }
 
-fn pending_in(root: &std::path::Path) -> Vec<Pending> {
-    let mut out = Vec::new();
-    let Ok(sessions) = std::fs::read_dir(root) else {
-        return out;
-    };
-    for s in sessions.flatten() {
-        let sid = s.file_name().to_string_lossy().to_string();
-        if !safe(&sid) {
-            continue;
-        }
-        let Ok(files) = std::fs::read_dir(s.path()) else {
-            continue;
-        };
-        for f in files.flatten() {
-            let p = f.path();
-            if p.extension().is_none_or(|x| x != "html") {
-                continue;
-            }
-            let name = p
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            if !safe(&name)
-                || ["answer.md", "dropped"]
-                    .iter()
-                    .any(|x| p.with_file_name(format!("{name}.{x}")).exists())
-            {
-                continue;
-            }
-            let html = std::fs::read_to_string(&p).unwrap_or_default();
-            let since = f
-                .metadata()
-                .and_then(|m| m.modified())
-                .ok()
+/// A pending round's page as it was last read.
+struct Page {
+    path: PathBuf,
+    modified: Option<SystemTime>,
+    found: Pending,
+}
+
+fn page_of(sid: &str, name: &str, path: &Path) -> Page {
+    let modified = modified_of(path);
+    let html = std::fs::read_to_string(path).unwrap_or_default();
+    Page {
+        path: path.to_path_buf(),
+        modified,
+        found: Pending {
+            sid: sid.to_string(),
+            name: name.to_string(),
+            title: title_of(&html).unwrap_or_else(|| name.to_string()),
+            since: modified
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
-            out.push(Pending {
-                sid: sid.clone(),
-                title: title_of(&html).unwrap_or_else(|| name.clone()),
-                name,
-                since,
-            });
+                .unwrap_or(0),
+        },
+    }
+}
+
+/// The rounds in one session's folder that have no answer yet and that the session hasn't
+/// withdrawn (`meownitor-hook drop`).
+fn pages_in(dir: &Path, sid: &str) -> Vec<Page> {
+    let mut out = Vec::new();
+    let Ok(files) = std::fs::read_dir(dir) else {
+        return out;
+    };
+    for f in files.flatten() {
+        let p = f.path();
+        if p.extension().is_none_or(|x| x != "html") {
+            continue;
         }
+        let name = p
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        if !safe(&name)
+            || ["answer.md", "dropped"]
+                .iter()
+                .any(|x| p.with_file_name(format!("{name}.{x}")).exists())
+        {
+            continue;
+        }
+        out.push(page_of(sid, &name, &p));
     }
     out
+}
+
+/// The pending rounds, asked for three times a second (sessions.rs) while the folders hold every
+/// page and picture of the last month — so they are not all read every time. A session's folder is
+/// listed again only when its own modification time changed: a page, an answer, a withdrawal are
+/// each a file added to it. A page still pending is read again only when it was rewritten. And
+/// every `ANEW` everything is read anew, should a change ever not show in a folder's time.
+pub struct Watch {
+    dirs: HashMap<String, (Option<SystemTime>, Vec<Page>)>,
+    anew: Option<Instant>,
+}
+
+const ANEW: Duration = Duration::from_secs(10);
+
+impl Watch {
+    pub fn new() -> Self {
+        Watch {
+            dirs: HashMap::new(),
+            anew: None,
+        }
+    }
+
+    pub fn pending(&mut self) -> Vec<Pending> {
+        match dir() {
+            Some(root) => self.pending_in(&root),
+            None => Vec::new(),
+        }
+    }
+
+    fn pending_in(&mut self, root: &Path) -> Vec<Pending> {
+        let anew = self.anew.is_none_or(|t| t.elapsed() >= ANEW);
+        if anew {
+            self.anew = Some(Instant::now());
+        }
+        let mut seen = std::mem::take(&mut self.dirs);
+        let mut out = Vec::new();
+        let Ok(sessions) = std::fs::read_dir(root) else {
+            return out;
+        };
+        for s in sessions.flatten() {
+            let sid = s.file_name().to_string_lossy().to_string();
+            if !safe(&sid) {
+                continue;
+            }
+            let path = s.path();
+            let modified = modified_of(&path);
+            let mut pages = match seen.remove(&sid) {
+                Some((was, pages)) if !anew && modified.is_some() && was == modified => pages,
+                _ => pages_in(&path, &sid),
+            };
+            for p in &mut pages {
+                if modified_of(&p.path) != p.modified {
+                    *p = page_of(&sid, &p.found.name, &p.path);
+                }
+            }
+            out.extend(pages.iter().map(|p| p.found.clone()));
+            self.dirs.insert(sid, (modified, pages));
+        }
+        out
+    }
+}
+
+/// How long a session's rounds are kept after the last thing happened in its folder.
+const KEEP: Duration = Duration::from_secs(30 * 24 * 3600);
+
+/// Removes the round folders of sessions where every round is answered or withdrawn and nothing
+/// has changed for `KEEP` — pages, pictures and answers alike. A folder with a round still waiting
+/// for its answer stays for as long as it waits. Returns how many folders went.
+pub fn prune() -> usize {
+    dir()
+        .map(|root| prune_in(&root, SystemTime::now()))
+        .unwrap_or(0)
+}
+
+fn prune_in(root: &Path, now: SystemTime) -> usize {
+    let Ok(sessions) = std::fs::read_dir(root) else {
+        return 0;
+    };
+    let mut gone = 0;
+    for s in sessions.flatten() {
+        let sid = s.file_name().to_string_lossy().to_string();
+        // file_type() doesn't follow a link: a folder linked from elsewhere is not ours to empty.
+        if !safe(&sid) || !s.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let path = s.path();
+        if !pages_in(&path, &sid).is_empty() {
+            continue;
+        }
+        let newest = std::fs::read_dir(&path)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|f| f.metadata().ok()?.modified().ok())
+            .max()
+            .or_else(|| modified_of(&path));
+        if newest.is_some_and(|t| now.duration_since(t).is_ok_and(|age| age > KEEP))
+            && std::fs::remove_dir_all(&path).is_ok()
+        {
+            gone += 1;
+        }
+    }
+    gone
 }
 
 fn page_url(sid: &str, name: &str) -> String {
@@ -368,12 +477,54 @@ mod tests {
         }
         std::fs::write(dir.join("answered.answer.md"), "1 — A").unwrap();
         std::fs::write(dir.join("dropped.dropped"), "").unwrap();
-        let list = pending_in(&root);
-        let _ = std::fs::remove_dir_all(&root);
+        let mut watch = Watch::new();
+        let list = watch.pending_in(&root);
         assert_eq!(
             list.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(),
             ["open"]
         );
         assert_eq!(list[0].title, "T open");
+
+        // What changes between two passes shows in the next one: a page rewritten in place, a new
+        // page, an answer.
+        std::thread::sleep(Duration::from_millis(30));
+        std::fs::write(dir.join("open.html"), "<title>T open, again</title>").unwrap();
+        assert_eq!(watch.pending_in(&root)[0].title, "T open, again");
+        std::fs::write(dir.join("next.html"), "<title>T next</title>").unwrap();
+        std::fs::write(dir.join("open.answer.md"), "1 — B").unwrap();
+        let list = watch.pending_in(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(
+            list.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(),
+            ["next"]
+        );
+    }
+
+    /// Only a folder where every round is done and nothing changed for a month goes; one with a
+    /// round still waiting stays however old it is.
+    #[test]
+    fn old_answered_rounds_go_and_waiting_ones_stay() {
+        let root = std::env::temp_dir().join(format!("cw-prune-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (sid, answered) in [("done", true), ("waits", false)] {
+            let dir = root.join(sid);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("r.html"), "<title>T</title>").unwrap();
+            std::fs::write(dir.join("r-dark.png"), b"png").unwrap();
+            if answered {
+                std::fs::write(dir.join("r.answer.md"), "1 — A").unwrap();
+                std::fs::write(dir.join("r.taken"), "").unwrap();
+            }
+        }
+        let now = SystemTime::now();
+        assert_eq!(prune_in(&root, now), 0, "nothing here is a month old");
+        assert_eq!(prune_in(&root, now + KEEP - Duration::from_secs(60)), 0);
+        assert_eq!(prune_in(&root, now + KEEP + Duration::from_secs(60)), 1);
+        assert!(!root.join("done").exists());
+        assert!(
+            root.join("waits").join("r.html").exists(),
+            "an unanswered round is there to answer whenever the user gets to it"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

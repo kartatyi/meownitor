@@ -361,7 +361,8 @@ fn main() {
         // "Claude is waiting for your input" and the like change nothing.
         "Notification" => (prev_state.clone(), prev_what.clone(), prev_detail.clone()),
         "Stop" => ("done".into(), "@done".into(), String::new()),
-        "StopFailure" => ("done".into(), "@failed".into(), String::new()),
+        // The turn ended on an API error; `error` names it: rate_limit, server_error…
+        "StopFailure" => ("done".into(), "@failed".into(), short(&str_of("error"), 40)),
         "SessionEnd" => ("ended".into(), String::new(), String::new()),
         _ => return,
     };
