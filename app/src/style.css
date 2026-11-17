@@ -3,14 +3,14 @@
   --card:#141C2B; --line:#26324A; --line2:#35435D;
   --ink:#F2F6FF; --ink2:#C3CCDB; --ink3:#8E9AAE; --ink4:#5E6A80;
   --fill1:#222D42; --hover:#1E2A3D; --track:#717D95;
-  --primary:#54A9FF; --ok:#5DC264; --warn:#FFAE43; --warn-weak:rgba(255,174,67,.14); --danger:#FC725A;
+  --primary:#54A9FF; --ok:#5DC264; --warn:#FFAE43; --warn-weak:rgba(255,174,67,.14); --ok-weak:rgba(93,194,100,.14); --primary-weak:rgba(84,169,255,.14); --danger:#FC725A;
 }
 @media (prefers-color-scheme: light){
   :root{
     --card:#FFFFFF; --line:#E1E5EA; --line2:#CBD2DA;
     --ink:#1C1F23; --ink2:#4B5462; --ink3:#7C8694; --ink4:#A5ADB8;
     --fill1:#E7EAF0; --hover:#F0F3F8; --track:#B4BCC7;
-    --primary:#0064FA; --ok:#2E9E3C; --warn:#CF7300; --warn-weak:rgba(252,136,0,.12); --danger:#E0331B;
+    --primary:#0064FA; --ok:#2E9E3C; --warn:#CF7300; --warn-weak:rgba(252,136,0,.12); --ok-weak:rgba(46,158,60,.10); --primary-weak:rgba(0,100,250,.08); --danger:#E0331B;
   }
 }
 *{box-sizing:border-box}
@@ -26,12 +26,18 @@ canvas.spr{display:block;image-rendering:pixelated}
 .cardwrap .sit{position:absolute;top:0;right:22px;z-index:2}
 .cardwrap.dl .sit{right:auto;left:22px}
 
-.wg{width:300px;background:var(--card);border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+/* The card is never taller than the screen has room for (--maxh, widget.js setMaxH): its list of
+   sessions, or its settings, scrolls inside, the header and the limits stay put. */
+.wg{width:300px;background:var(--card);border:1px solid var(--line2);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;max-height:var(--maxh,none)}
+.wg>*{flex:none}
+.wg>.ss,.wg>.sb{flex:0 1 auto;min-height:0;overflow-y:auto}
+.wg ::-webkit-scrollbar{width:6px}
+.wg ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:3px}
 .wg.er{border-right:0;border-radius:10px 0 0 10px}
 .wg.el{border-left:0;border-radius:0 10px 10px 0}
 .wg .hdr{display:flex;align-items:center;gap:7px;height:34px;padding:0 5px 0 10px;border-bottom:1px solid var(--line)}
 .wg .hdr .tt{font-weight:600}
-.wg .hdr .ct{color:var(--ink3)}
+.wg .hdr .ct{color:var(--ink3);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wg .hdr .sp{flex:1}
 .wg .ib{width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--ink3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .wg .ib:hover{background:var(--hover);color:var(--ink)}
@@ -60,9 +66,19 @@ canvas.spr{display:block;image-rendering:pixelated}
 .wg .grp svg{width:14px;height:14px;transition:transform .15s}
 .wg .grp.open svg{transform:rotate(90deg)}
 .wg .grp .n{margin-left:auto}
-.wg .qa{margin-top:6px}
+.wg .qa{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px}
+/* What a permission request asks to allow, in full; what the session said when its turn was over. */
+.wg .more{margin-top:4px;padding:4px 6px;border-radius:5px;background:var(--fill1);color:var(--ink2);font:11px/1.4 Consolas,ui-monospace,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.wg .say{margin-top:2px;color:var(--ink3);font-size:11.5px;line-height:1.4;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .wg .qbtn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:6px;border:1px solid var(--warn);background:var(--warn-weak);color:var(--warn);font-size:12px;font-weight:600;cursor:pointer}
 .wg .qbtn svg{width:14px;height:14px}
+.wg .qbtn.ok{border-color:var(--ok);background:var(--ok-weak);color:var(--ok)}
+.wg .qbtn:disabled,.wg .lbtn:disabled{opacity:.5;cursor:default}
+.wg .lbtn{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:6px;border:1px solid var(--line2);background:transparent;color:var(--ink2);font-size:12px;cursor:pointer}
+.wg .lbtn:hover{background:var(--hover);color:var(--ink)}
+.wg .lbtn svg{width:13px;height:13px}
+.wg .hint{display:flex;align-items:center;gap:10px;margin:4px 4px 6px;padding:8px 10px;border:1px solid var(--warn);border-radius:8px;background:var(--warn-weak);color:var(--ink2);font-size:12px}
+.wg .hint span{flex:1}
 .wg .lim{border-top:1px solid var(--line);padding:8px 10px 10px}
 .wg .lr{display:grid;grid-template-columns:58px 32px 1fr auto;gap:8px;align-items:center;height:22px}
 .wg .ll{color:var(--ink2)}
@@ -125,6 +141,21 @@ canvas.spr{display:block;image-rendering:pixelated}
 @keyframes bump-t{25%{transform:translateY(7px)}50%{transform:none}70%{transform:translateY(3px)}}
 
 .wg .sec{padding:8px 10px 8px}
+.wg .sec.bt{border-top:1px solid var(--line)}
+.wg .chips{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.wg .chip{height:26px;padding:0 8px;border:1px solid var(--line);border-radius:7px;background:transparent;color:var(--ink3);font-size:11.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wg .chip:hover{border-color:var(--line2);color:var(--ink)}
+.wg .chip.on{border-color:var(--primary);background:var(--primary-weak);color:var(--ink)}
+.wg .vol{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--ink3)}
+.wg .vol input{flex:1;min-width:0;height:16px;margin:0;accent-color:var(--primary);cursor:pointer}
+.wg .vol+.chips{margin-top:8px}
+.wg .sn{display:flex;align-items:center;gap:8px;height:30px}
+.wg .snl{flex:1;min-width:0;color:var(--ink2)}
+.wg .pick{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.wg .pick button{height:24px;padding:0;border:0;background:transparent;color:var(--ink);font-size:12px;cursor:pointer}
+.wg .pick .pb{width:22px;color:var(--ink3);font-size:14px;line-height:1}
+.wg .pick .pn{width:76px}
+.wg .pick button:hover{background:var(--hover);color:var(--ink)}
 .wg .sl{font-size:11.5px;color:var(--ink3);margin-bottom:6px}
 .wg .kinds{display:flex;gap:6px}
 .wg .kd{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0 5px;border:1px solid var(--line);border-radius:8px;background:transparent;cursor:pointer;font-size:11.5px;color:var(--ink2)}

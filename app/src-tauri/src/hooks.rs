@@ -21,6 +21,21 @@ const EVENTS: [&str; 12] = [
     "SubagentStop",
 ];
 const MARKS: [&str; 2] = ["meownitor-hook", "claude-widget-hook"];
+/// What `install` writes, by number: raised whenever the events or their timeouts change, so a
+/// hook installed by an earlier widget is brought up to it once (`catch_up`). config.json keeps
+/// the number of the last install as `hookLayout`.
+const LAYOUT: u64 = 2;
+
+/// Seconds Claude Code gives the hook on an event. It is done in milliseconds on all but a
+/// permission request, where — only if the user turned that on — it waits for a click on the card
+/// (bin/hook.rs `ask_widget`, two minutes at most).
+fn timeout_of(event: &str) -> u64 {
+    if event == "PermissionRequest" {
+        600
+    } else {
+        5
+    }
+}
 
 fn ours(command: &str) -> bool {
     MARKS.iter().any(|m| command.contains(m))
@@ -178,15 +193,16 @@ pub fn install() -> Result<Status, String> {
         {
             if h.get("command").and_then(|c| c.as_str()).is_some_and(ours) {
                 h["command"] = json!(command);
+                h["timeout"] = json!(timeout_of(ev));
                 had = true;
             }
         }
         if !had {
-            arr.push(json!({ "matcher": "", "hooks": [{ "type": "command", "command": command, "timeout": 5 }] }));
+            arr.push(json!({ "matcher": "", "hooks": [{ "type": "command", "command": command, "timeout": timeout_of(ev) }] }));
         }
     }
     write_with_backup(&s)?;
-    crate::config::merge(&json!({ "hookEvents": EVENTS.len() }));
+    crate::config::merge(&json!({ "hookLayout": LAYOUT }));
     // the skill that asks the user through the widget goes in with the hook
     let _ = crate::skill::install();
     Ok(status())
@@ -211,19 +227,20 @@ pub fn refresh_copy() {
     }
 }
 
-/// The hook is in, but the widget that put it there listened to other events than this one does
-/// (config.json `hookEvents` is how many it installed; a widget from before kept no count).
+/// The hook is in, but the widget that put it there installed it another way than this one does
+/// (config.json `hookLayout`; a widget from before kept no number).
 fn behind() -> bool {
     let installed = read_settings().map(|s| count_ours(&s)).unwrap_or(0);
-    let counted = crate::config::read()
-        .get("hookEvents")
+    let layout = crate::config::read()
+        .get("hookLayout")
         .and_then(|v| v.as_u64());
-    installed > 0 && counted != Some(EVENTS.len() as u64)
+    installed > 0 && layout != Some(LAYOUT)
 }
 
-/// An updated widget may listen to more events than the one that installed the hook (StopFailure
-/// came later): its first start adds what is missing — once, so an entry the user takes out by
-/// hand afterwards stays out. Release builds only, like the hook's copy.
+/// An updated widget may install the hook another way than the one that put it in — StopFailure
+/// came later, and so did the longer wait on a permission request: its first start brings the
+/// entries up to date — once, so what the user changes by hand afterwards stays. Release builds
+/// only, like the hook's copy.
 pub fn catch_up() {
     if !cfg!(debug_assertions) && behind() {
         let _ = install();
@@ -300,12 +317,24 @@ mod tests {
             .remove("StopFailure")
             .unwrap();
         std::fs::write(&settings, old.to_string()).unwrap();
-        crate::config::merge(&json!({ "hookEvents": EVENTS.len() - 1 }));
+        crate::config::merge(&json!({ "hookLayout": LAYOUT - 1 }));
         assert!(behind());
         install().unwrap();
         assert!(!behind());
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
         assert_eq!(count_ours(&v), EVENTS.len());
+        // Only a permission request, which may wait for a click on the card, gets more than 5 s.
+        let timeout = |ev: &str| {
+            v["hooks"][ev]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| is_ours(e))
+                .unwrap()["hooks"][0]["timeout"]
+                .as_u64()
+        };
+        assert_eq!(timeout("PermissionRequest"), Some(600));
+        assert_eq!(timeout("PreToolUse"), Some(5));
 
         // Entries left pointing at an old copy are re-pointed, not doubled.
         let path = installed_hook()

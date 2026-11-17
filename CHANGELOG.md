@@ -1,51 +1,76 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
+
+### Sessions
+
+- A session that waits for you — a permission request, a question — stays under «Waiting for you»
+  until it is answered or stopped. After half an hour of silence it used to drop into the idle
+  group, and the pet stopped asking. A question round stays for as long as it has no answer.
+- A turn that ended on an API error shows as «Stopped with an error», with the reason: limit
+  reached, server error and the like. For that the hook listens to a twelfth event, `StopFailure`.
+- A session waiting for permission shows what it asks to allow, in full — the command itself, the
+  whole path; one whose turn is over shows the beginning of what Claude said.
+- Permissions on the card, off until turned on in the settings: a permission request comes to the
+  session's row with **Allow**, **Deny** and **In the terminal**. The hook waits up to two minutes
+  for the click and otherwise leaves the request to Claude Code's own dialog. An answer can only
+  come from the widget's own window, and `widget.log` keeps each one.
+- A click on a terminal session unfolds two actions: copy its `claude --resume` command, open its
+  folder. Names and details cut short show the whole of them on hover.
+- A first start shows the card by itself, and without the Claude Code hook the card says so and
+  has the **Install** button.
+
+### Sounds and notifications
+
+- A sound of your choice for each: a session starts waiting for you, its turn is over, it stops
+  with an error. A dozen to pick from — three meows, two quacks, a croak, a cluck and a plop are
+  recordings (CC0, from Freesound; see `app/src/sounds/README.md`), a cuckoo, a pew, a coin and
+  the old chirp are made on the spot. A volume slider, a switch for each.
+- On request the sound comes again every five minutes while a session keeps waiting, and a system
+  notification goes with it. **Do not disturb for an hour** in the tray menu silences it all.
+
+### The window
 
 - The widget also docks at the top edge of the screen, to one of three magnets — the left corner,
   the centre or the right corner — and the card drops down from there on hover.
 - Three looks at an edge, picked in the settings: the strip of dots (as before), the pet peeking out
   (half of it from a side, upside down from the top) or a thin line that pulses and lets the pet peek
-  out when a session waits for you.
-- Collapsed at an edge, the widget nudges out once when a session starts waiting.
+  out when a session waits for you. Collapsed at an edge, the widget nudges out once when a session
+  starts waiting.
+- Motion: at an edge the card slides out of the screen edge on hover and back into it; the card
+  unfolds from the pet and folds back into it, and turns over to the settings in one movement.
+- The pet comes back to where you put it after its card is opened and folded again.
+- A card taller than the screen has room for scrolls inside, the header and the limits staying put.
+- The tray menu opens the card and the settings, hides the widget for an hour and opens the folder
+  with data and logs; on Windows a click on the icon opens the card and hovering says who waits
+  and who works.
+- Windows: the widget hides while a full-screen window is in front on its monitor — a film, a
+  slide show, a game — unless turned off in the settings.
+- Windows: the widget no longer gets lost behind other windows some time into a run, and the
+  content no longer jumps at the right edge when the window changes size.
+- One widget at a time: started while one is running, a second one leaves.
 - The unused part of a limit bar has a lighter track, so a nearly spent limit no longer looks full.
-- Motion: at an edge the card slides out of the screen edge on hover and back into it when the
-  cursor leaves, and the collapsed view comes out after it; the card unfolds from the pet and folds
-  back into it; at the line the pet comes out from behind it when a session starts waiting.
-- The card turns over to the settings in one smooth motion. Near the bottom of the screen, where the
-  taller side has to move up, the pet hops onto its new top.
-- The pet comes back to where you put it after its card is opened and folded again. Near a screen
-  corner the card is pushed onto the screen, and the pet used to follow it there; the same went for
-  the settings and for the card opened from an edge.
-- Windows: the window moves and resizes in one step, so the content no longer jumps at the right
-  edge when its size changes.
+
+### Question rounds
+
 - The `meownitor-round` skill comes with the widget: installing the hook puts it into
   `~/.claude/skills/`, every start of an updated widget brings the new one, removing the hook takes
-  it away. No zip to unpack.
-- The page kit is built into the widget and served next to every page — a session no longer copies
-  it into the round folder, and a page always gets the kit of the widget that shows it.
-- `meownitor-hook ask <name>` checks the page before waiting: no title, no question for the kit, no
-  way for the answer back — reported at once instead of a question that never arrives. Given a path
-  to a page made elsewhere, it copies the page in first. `wait` still works.
-- An answer with no pick but a comment reads `1 — own option`.
-- The skill is split: a short `SKILL.md` with the steps, and `reference.md` with frames, numbers and
-  the rest of the kit, read when a page needs them.
-- Windows: the widget no longer gets lost behind other windows some time into a run. Every 2 s it
-  checks that no ordinary window sits above it and goes back on top if one does, without taking
-  the focus; `widget.log` names the window it was under.
-- A session that waits for you — a permission request, a question — stays under «Waiting for you»
-  until it is answered or stopped. After half an hour of silence it used to drop into the idle
-  group, and the pet stopped asking. A question round stays for as long as it has no answer, and
-  its row keeps the session's name after the session itself has left the list.
-- A turn that ended on an API error shows as «Stopped with an error», with the reason: limit
-  reached, server error and the like. For that the hook listens to a twelfth event, `StopFailure`;
-  a hook installed earlier gets it on the first start of the updated widget (`settings.json` is
-  backed up first, as always).
-- One widget at a time: started while one is running, a second widget leaves instead of sitting
-  next to the first.
+  it away. The page kit is built into the widget and served next to every page.
+- `meownitor-hook ask <name>` checks the page before waiting — no title, no question for the kit,
+  no way for the answer back — and reports it at once. Given a path to a page made elsewhere, it
+  copies the page in first. `wait` still works.
+- A round keeps the draft of an answer: a window closed by accident comes back as it was left.
+- An answer with no pick but a comment reads `1 — own option`. The skill is split into a short
+  `SKILL.md` and `reference.md` for the rest of the kit.
+
+### Housekeeping
+
 - The data folder is cleaned up: a session's state file goes a week after its last event, a
-  session's rounds a month after the last change in them — never while one of them still waits for
-  an answer. The round folders are no longer read in full three times a second.
+  session's rounds a month after the last change in them — never while one still waits for an
+  answer. The round folders are no longer read in full three times a second.
+- The first start of 0.3.0 brings an installed hook up to date — the `StopFailure` event, a longer
+  wait on `PermissionRequest` — backing up `~/.claude/settings.json` first, as always.
+- `events.log` lines no longer run into each other when two hooks write at once.
 
 ## 0.2.0
 

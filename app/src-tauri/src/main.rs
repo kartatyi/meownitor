@@ -11,14 +11,18 @@ mod lifecycle;
 mod limits;
 mod msix;
 mod ontop;
+mod perms;
 mod rounds;
 mod sessions;
 mod skill;
+mod visible;
 mod watchdog;
 
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use std::time::Duration;
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, PhysicalPosition, PhysicalSize, State, WebviewWindow, Wry};
 
@@ -166,6 +170,9 @@ fn get_config() -> serde_json::Value {
 
 #[tauri::command]
 fn set_config(patch: serde_json::Value) -> serde_json::Value {
+    if let Some(on) = patch.get("hideOnFullscreen").and_then(|v| v.as_bool()) {
+        ontop::hide_on_fullscreen(on);
+    }
     config::merge(&patch)
 }
 
@@ -180,10 +187,28 @@ fn set_lang(app: AppHandle, lang: String) -> Result<(), String> {
     Ok(())
 }
 
-/// The tray menu: the mood and character switches (for trying them out) and Quit.
+/// «Do not disturb» as the card last reported it (`tray_state`): the tray item's tick.
+static QUIET: AtomicBool = AtomicBool::new(false);
+
+/// The tray menu: opening the card and the settings, sending the widget away for an hour or
+/// bringing it back, an hour of quiet, the data folder, the mood and character switches (for
+/// trying them out) and Quit.
 fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let l = i18n::lang();
     let item = |id: &str| MenuItem::with_id(app, id, l.tr(id), true, None::<&str>);
+    let hide = item(if visible::sent_away(app) {
+        "unhide"
+    } else {
+        "hide"
+    })?;
+    let quiet = CheckMenuItem::with_id(
+        app,
+        "quiet",
+        l.tr("quiet"),
+        true,
+        QUIET.load(Ordering::Relaxed),
+        None::<&str>,
+    )?;
     let moods = Submenu::with_items(
         app,
         l.tr("mood"),
@@ -211,12 +236,123 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     Menu::with_items(
         app,
         &[
+            &item("open")?,
+            &item("settings")?,
+            &PredefinedMenuItem::separator(app)?,
+            &hide,
+            &quiet,
+            &item("data")?,
+            &PredefinedMenuItem::separator(app)?,
             &moods,
             &kinds,
             &PredefinedMenuItem::separator(app)?,
             &item("quit")?,
         ],
     )
+}
+
+/// The tray menu again, after something it words or ticks has changed.
+pub(crate) fn refresh_tray(app: &AppHandle) {
+    if let (Some(tray), Ok(menu)) = (app.tray_by_id("main"), tray_menu(app)) {
+        let _ = tray.set_menu(Some(menu));
+    }
+}
+
+/// What the tray icon says on hover — how many sessions wait and work, the nearest limit — and
+/// whether «Do not disturb» is on, as the card has them.
+#[tauri::command]
+fn tray_state(app: AppHandle, tip: String, quiet: bool) {
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_tooltip(Some(tip));
+    }
+    if QUIET.swap(quiet, Ordering::Relaxed) != quiet {
+        refresh_tray(&app);
+    }
+}
+
+/// A click in the tray menu. What only the card can do goes on to it as a "tray" event.
+fn tray_clicked(app: &AppHandle, id: &str) {
+    match id {
+        "quit" => {
+            watchdog::log("quit from the tray");
+            app.exit(0);
+        }
+        "hide" => visible::hide_for(app, Duration::from_secs(3600)),
+        "unhide" => visible::show(app),
+        "data" => {
+            if let Some(dir) = sessions::data_dir() {
+                open_path(&dir);
+            }
+        }
+        _ => {
+            // The card and its settings are no use hidden.
+            if id == "open" || id == "settings" {
+                visible::show(app);
+            }
+            let _ = app.emit("tray", id.to_string());
+        }
+    }
+}
+
+/// Opens a folder in the system's file manager.
+fn open_path(dir: &std::path::Path) -> bool {
+    let opener = if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(opener).arg(dir).spawn().is_ok()
+}
+
+/// A terminal session's folder, from its row.
+#[tauri::command]
+fn open_folder(path: String) -> bool {
+    let dir = std::path::Path::new(&path);
+    dir.is_dir() && open_path(dir)
+}
+
+/// The clipboard, kept for as long as the widget runs: under X11 what was copied goes with the
+/// one who copied it.
+static CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
+
+/// `claude --resume …`, from a terminal session's row.
+#[tauri::command]
+fn copy_text(text: String) -> bool {
+    let mut held = CLIPBOARD.lock().unwrap();
+    if held.is_none() {
+        *held = arboard::Clipboard::new().ok();
+    }
+    held.as_mut().is_some_and(|c| c.set_text(text).is_ok())
+}
+
+/// A system notification: a session started waiting for you.
+#[tauri::command]
+fn notify(app: AppHandle, title: String, body: String) {
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
+/// The click on a permission request's row: "allow", "deny", or "dialog" to leave it to Claude
+/// Code's own dialog. Taken from the widget's own window only — a round's page is written by a
+/// session, and a session must not answer its own request. widget.log keeps what was answered.
+#[tauri::command]
+fn permit(window: WebviewWindow, sid: String, answer: String) -> bool {
+    if window.label() != "main" || !["allow", "deny", "dialog"].contains(&answer.as_str()) {
+        return false;
+    }
+    let answered = perms::answer(&sid, &answer);
+    let short: String = sid.chars().take(8).collect();
+    watchdog::log(&format!(
+        "permission request of {short}: {answer}{}",
+        if answered {
+            ""
+        } else {
+            " — no longer waiting"
+        }
+    ));
+    answered
 }
 
 #[tauri::command]
@@ -254,8 +390,10 @@ fn open_session(local: String) {
 }
 
 #[tauri::command]
-fn show(window: WebviewWindow, beat: State<watchdog::Beat>) {
+fn show(app: AppHandle, window: WebviewWindow, beat: State<watchdog::Beat>) {
     watchdog::shown(&window, &beat);
+    // Unless there is a reason for it to stay hidden: a full-screen window was in front already.
+    visible::apply(&app);
 }
 
 #[tauri::command]
@@ -327,8 +465,10 @@ fn main() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_notification::init())
         .register_uri_scheme_protocol("round", rounds::handle)
         .manage(DragOffset::default())
+        .manage(visible::Away::default())
         .manage(watchdog::Beat::default())
         .manage(sessions::Latest(Mutex::new(Vec::new())))
         .manage(limits::Latest(Mutex::new(limits::Limits::default())))
@@ -353,27 +493,46 @@ fn main() {
             page_hidden,
             drag_start,
             drag_move,
-            drag_end
+            drag_end,
+            tray_state,
+            open_folder,
+            copy_text,
+            notify,
+            permit
         ])
         .setup(|app| {
             // A widget, not an app to switch to: no Dock icon and no menu bar of its own.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            ontop::hide_on_fullscreen(
+                config::read()
+                    .get("hideOnFullscreen")
+                    .and_then(|v| v.as_bool())
+                    != Some(false),
+            );
             let menu = tray_menu(app.handle())?;
-            TrayIconBuilder::with_id("main")
+            let tray = TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip(app.package_info().name.clone())
                 .menu(&menu)
-                .on_menu_event(|app, event| {
-                    let id = event.id.as_ref();
-                    if id == "quit" {
-                        watchdog::log("quit from the tray");
-                        app.exit(0);
-                    } else {
-                        let _ = app.emit("tray", id.to_string());
+                .on_menu_event(|app, event| tray_clicked(app, event.id.as_ref()));
+            // On Windows a click on the icon opens the card, the menu is on the right button; a
+            // Mac's menu bar item opens its menu, and Linux tells of no clicks at all.
+            #[cfg(windows)]
+            let tray = tray
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        tray_clicked(tray.app_handle(), "open");
                     }
-                })
-                .build(app)?;
+                });
+            tray.build(app)?;
             hooks::refresh_copy();
             hooks::catch_up();
             // The skill the sessions read is the one this widget came with (release builds only,
@@ -381,6 +540,7 @@ fn main() {
             if !cfg!(debug_assertions) && hooks::status().installed {
                 let _ = skill::install();
             }
+            perms::spawn();
             sessions::spawn(app.handle().clone());
             limits::spawn(app.handle().clone());
             watchdog::spawn(app.handle().clone());

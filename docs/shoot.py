@@ -66,9 +66,9 @@ def main():
         tmp = Path(t)
         for th in ("dark", "light"):
             shot(page("hero.html", f"theme={th}&name={n}"), OUT / f"hero-{th}.png", 1280, 640)
-            shot(page("mock.html", f"bg=none&how=card&mood=work&theme={th}&name={n}"), OUT / f"card-{th}.png", 360, 600, trim=True)
-            shot(page("mock.html", f"bg=none&how=settings&theme={th}&name={n}"), OUT / f"settings-{th}.png", 360, 600, trim=True)
-            shot(page("mock.html", f"bg=none&how=card&lang=uk&theme={th}&name={n}"), OUT / f"card-uk-{th}.png", 360, 600, trim=True)
+            shot(page("mock.html", f"bg=none&how=card&mood=work&theme={th}&name={n}"), OUT / f"card-{th}.png", 360, 900, trim=True)
+            shot(page("mock.html", f"bg=none&how=settings&theme={th}&name={n}"), OUT / f"settings-{th}.png", 360, 900, trim=True)
+            shot(page("mock.html", f"bg=none&how=card&lang=uk&theme={th}&name={n}"), OUT / f"card-uk-{th}.png", 360, 900, trim=True)
             shot(page("moods.html", f"theme={th}"), OUT / f"moods-{th}.png", 900, 420, trim=True)
             shot(round_page(th, tmp), OUT / f"round-{th}.png", 1100, 900)
 

@@ -3,7 +3,8 @@
   markup): the Dark/Light switch, picking variants (one per question, several in .q[data-multi]),
   drawings fitted to their cards ([data-w]), numbered markers and frames drawn on the element they
   point at ([data-mark], [data-frame]) or at a screenshot's pixels ([data-px]), a visual opened large,
-  and Send — POST /answer to the widget, which hands the answer to the waiting session.
+  the draft of an answer kept until it is sent (a window closed by accident loses nothing), and
+  Send — POST /answer to the widget, which hands the answer to the waiting session.
 
   Load it in <head>, without defer: the theme is set before the first paint, the rest waits until
   the page is parsed (its own scripts have run by then).
@@ -21,7 +22,10 @@
   var VIS = '.vb, .shot, .fig';
   var CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
   var ZOOM = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5 9.2 6.8M6.5 13.5h-4v-4M2.5 13.5l4.3-4.3"/></svg>';
-  var qs = [], msg = null, sendBtn = null, lb = null, frame = 0;
+  var qs = [], msg = null, sendBtn = null, lb = null, frame = 0, sent = false;
+  // What is picked and written so far is kept under the page's own address, so a window closed by
+  // accident comes back as it was left; sending clears it.
+  var DRAFTS = 'round-kit.draft:', DRAFT = DRAFTS + location.pathname;
 
   var WORDS = {
     en: {
@@ -73,6 +77,7 @@
   function init() {
     qs = $$('.q');
     qs.forEach(prepQuestion);
+    loadDraft();
     visuals().forEach(prepVisual);
     buildFoot();
     layout();
@@ -152,6 +157,40 @@
   function grow(ta) {
     ta.style.height = 'auto';
     ta.style.height = (ta.scrollHeight + ta.offsetHeight - ta.clientHeight) + 'px';
+  }
+
+  // ---- the draft: the picks and comments of an answer not sent yet
+  function saveDraft() {
+    try {
+      var d = { at: Date.now(), title: doc.title, q: {} }, any = false;
+      qs.forEach(function (q) {
+        var v = variants(q).filter(function (x) { return x.classList.contains('picked'); }).map(function (x) { return x.getAttribute('data-v'); });
+        var t = comment(q).value;
+        if (v.length || t) { d.q[q.getAttribute('data-q')] = { v: v, t: t }; any = true; }
+      });
+      if (any) localStorage.setItem(DRAFT, JSON.stringify(d)); else localStorage.removeItem(DRAFT);
+    } catch (e) { }
+  }
+
+  // A draft is this page's only while the title is the same: a new page under an old name starts
+  // clean. Drafts a month old — of rounds long answered elsewhere or withdrawn — are dropped.
+  function loadDraft() {
+    try {
+      for (var i = localStorage.length - 1; i >= 0; i--) {
+        var k = localStorage.key(i);
+        if (k.indexOf(DRAFTS) !== 0) continue;
+        var o = JSON.parse(localStorage.getItem(k) || '{}');
+        if (!o.at || Date.now() - o.at > 30 * 864e5) localStorage.removeItem(k);
+      }
+      var d = JSON.parse(localStorage.getItem(DRAFT) || 'null');
+      if (!d || !d.q || d.title !== doc.title) return;
+      qs.forEach(function (q) {
+        var a = d.q[q.getAttribute('data-q')];
+        if (!a) return;
+        variants(q).forEach(function (v) { if ((a.v || []).indexOf(v.getAttribute('data-v')) >= 0) setPicked(v, true); });
+        if (a.t) { var ta = comment(q); ta.value = a.t; grow(ta); }
+      });
+    } catch (e) { }
   }
 
   // ---- visuals: the drawn-at-width stage, the zoom button
@@ -418,6 +457,7 @@
 
   function progress() {
     var done = qs.filter(function (q) { var a = answered(q); q.classList.toggle('answered', a); return a; }).length;
+    if (!sent) saveDraft();
     if (!msg || (sendBtn && sendBtn.disabled)) return;
     if (qs.length > 1) say('', word('progress', { done: done, all: qs.length }) + (done && done < qs.length ? word('partial') : ''));
     else say('', done ? word('ready') : word('choose'));
@@ -447,7 +487,12 @@
     sendBtn.disabled = true;
     say('', word('sending'));
     fetch('/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: location.pathname, text: text }) })
-      .then(function (r) { if (!r.ok) throw 0; say('ok', word('sent')); })
+      .then(function (r) {
+        if (!r.ok) throw 0;
+        sent = true;
+        try { localStorage.removeItem(DRAFT); } catch (e) { }
+        say('ok', word('sent'));
+      })
       .catch(function () { sendBtn.disabled = false; say('err', word('failed')); });
   }
 })();
