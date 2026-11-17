@@ -4,7 +4,19 @@
 // so nothing puts it back. Every 2 s, on the window's thread: if a visible window that isn't topmost
 // sits above ours, ours goes back to the top of the topmost band — without taking the focus. Each
 // time widget.log says what was above it, so the culprit can be found.
+//
+// The same look tells when the widget should not be on top at all: a full-screen window in front on
+// its monitor — a film, a slide show, a game. Then it hides (visible.rs) and comes back when that
+// window leaves the front. The user can turn this off (config.json `hideOnFullscreen`).
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::AppHandle;
+
+static HIDE_ON_FULLSCREEN: AtomicBool = AtomicBool::new(true);
+
+/// The setting, as config.json has it now.
+pub fn hide_on_fullscreen(on: bool) {
+    HIDE_ON_FULLSCREEN.store(on, Ordering::Relaxed);
+}
 
 #[cfg(windows)]
 pub fn spawn(app: AppHandle) {
@@ -31,16 +43,20 @@ pub fn spawn(_: AppHandle) {}
 mod win {
     use crate::watchdog::log;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use tauri::WebviewWindow;
-    use windows_sys::Win32::Foundation::{CloseHandle, HWND};
+    use tauri::{Manager, WebviewWindow};
+    use windows_sys::Win32::Foundation::{CloseHandle, HWND, RECT};
     use windows_sys::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
     use windows_sys::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetClassNameW, GetWindow, GetWindowLongW, GetWindowThreadProcessId, IsWindowVisible,
-        SetWindowPos, GWL_EXSTYLE, GW_HWNDPREV, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
-        SWP_NOSIZE, WS_EX_TOPMOST,
+        GetClassNameW, GetForegroundWindow, GetWindow, GetWindowLongW, GetWindowRect,
+        GetWindowThreadProcessId, IsWindowVisible, SetWindowPos, GWL_EXSTYLE, GWL_STYLE,
+        GW_HWNDPREV, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WS_CAPTION,
+        WS_EX_TOPMOST,
     };
 
     fn topmost(h: HWND) -> bool {
@@ -70,9 +86,7 @@ mod win {
 
     /// "explorer.exe [CabinetWClass]", for the log.
     fn describe(h: HWND) -> String {
-        let mut class = [0u16; 128];
-        let n = unsafe { GetClassNameW(h, class.as_mut_ptr(), class.len() as i32) }.max(0);
-        let class = String::from_utf16_lossy(&class[..n as usize]);
+        let class = class_of(h);
         let mut pid = 0;
         unsafe { GetWindowThreadProcessId(h, &mut pid) };
         let mut exe = format!("pid {pid}");
@@ -105,7 +119,43 @@ mod win {
         };
     }
 
+    fn class_of(h: HWND) -> String {
+        let mut class = [0u16; 128];
+        let n = unsafe { GetClassNameW(h, class.as_mut_ptr(), class.len() as i32) }.max(0);
+        String::from_utf16_lossy(&class[..n as usize])
+    }
+
+    /// A full-screen window is in front on our monitor: it covers the whole of it and has no
+    /// caption. A maximized window keeps its caption (and with an auto-hidden taskbar covers the
+    /// monitor as well); the desktop covers it too, and is not what the user is watching.
+    fn covered(ours: HWND) -> bool {
+        unsafe {
+            let front = GetForegroundWindow();
+            if front.is_null()
+                || front == ours
+                || GetWindowLongW(front, GWL_STYLE) as u32 & WS_CAPTION == WS_CAPTION
+                || ["Progman", "WorkerW"].contains(&class_of(front).as_str())
+            {
+                return false;
+            }
+            let monitor = MonitorFromWindow(front, MONITOR_DEFAULTTONEAREST);
+            if monitor != MonitorFromWindow(ours, MONITOR_DEFAULTTONEAREST) {
+                return false;
+            }
+            let mut info: MONITORINFO = std::mem::zeroed();
+            info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+            let mut r: RECT = std::mem::zeroed();
+            if GetMonitorInfoW(monitor, &mut info) == 0 || GetWindowRect(front, &mut r) == 0 {
+                return false;
+            }
+            let m = info.rcMonitor;
+            r.left <= m.left && r.top <= m.top && r.right >= m.right && r.bottom >= m.bottom
+        }
+    }
+
     pub fn keep(ours: HWND, w: &WebviewWindow) {
+        let hide = super::HIDE_ON_FULLSCREEN.load(Ordering::Relaxed) && covered(ours);
+        crate::visible::cover(w.app_handle(), hide);
         if unsafe { IsWindowVisible(ours) } == 0 {
             return;
         }

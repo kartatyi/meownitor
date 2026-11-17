@@ -7,14 +7,19 @@
   var root=document.getElementById('root');
   var SNAP=24,BAND=58;
   // ax / ay: where the user put the content (see fit); anim: an animation owns the window (see animating).
-  var S={mode:'cat',dock:null,mag:'c',open:false,idleOpen:false,back:false,ax:0,ay:0,anim:false,stale:false};
+  var S={mode:'cat',dock:null,mag:'c',open:false,idleOpen:false,back:false,ax:0,ay:0,anim:false,stale:false,sel:null,copied:null};
   var big=Pixel.Sprite('cat','catB',3,'idle'),small=Pixel.Sprite('cat','catB',2,'idle');
   // Settings live on the back of the card (config.json through Rust); SET holds what the back shows.
   var t=I18N.t;
   var KINDS={cat:['cat','catB'],blob:['blob','blob'],ghost:['ghost','ghost']};
   // How the widget looks collapsed at an edge: a strip of dots, the pet peeking out, or a thin line.
   var EDGES=['strip','peek','line'];
-  var CFG={kind:'cat',sound:true,edge:'strip'},SET={autostart:false,hook:null,confirm:null,err:'',ver:''};
+  // What is told and how: `sound` when a session asks, `soundDone` when its turn is over, `remind`
+  // while it keeps waiting, `toast` a system notification; `quietUntil` — «do not disturb» from the
+  // tray; `cover` — hide under a full-screen window; `perm` — answer permission requests on the card;
+  // `soundFail` when it stopped with an error; `sndAsk`, `sndDone`, `sndFail` — which sound (sounds.js)
+  // tells of each; `volume` (0–100) — how loud.
+  var CFG={kind:'cat',sound:true,edge:'strip',soundDone:true,remind:false,toast:false,cover:true,perm:false,quietUntil:0,volume:50,soundFail:true,sndAsk:'quack2',sndDone:'meow3',sndFail:'meow'},SET={autostart:false,hook:null,confirm:null,err:'',ver:''},NAME='Meownitor';
   // Only Windows has «start with Windows»: macOS and Linux start things at login (tauri-plugin-autostart's
   // LaunchAgent, an XDG autostart entry), and the switch says so.
   var OS=/Mac/.test(navigator.platform||navigator.userAgent)?'mac':/Linux/.test(navigator.platform||navigator.userAgent)?'linux':'';
@@ -78,25 +83,46 @@
   }
   function agoTxt(ts){var a=ago(ts);return a===t('yesterday')?a:t('ago',{t:a});}
   function iconFor(s,code){return ICON[code]||(s.state==='wait'?'HelpCircleOutline':'ConsoleLine');}
+  // A session's row: its name and how long, what it is doing; what it asks to allow, in full, or the
+  // beginning of what it said when its turn is over; and what can be done from here — answer its
+  // round, allow or deny its request (if its hook waits for that), open it in Desktop, or, for a
+  // session in a terminal, the actions a click on the row unfolds.
   function row(s){
-    var title=titleOf(s),w=whatOf(s);
-    var h='<div class="row '+s.state+'" data-local="'+esc(s.local||'')+'"><span class="dot '+s.state+'"></span><div class="tx"><div class="l1"><span class="nm">'+esc(title)+'</span><span class="tm" data-since="'+s.since+'">'+ago(s.since)+'</span></div>';
-    if(s.state!=='idle')h+='<div class="ac">'+ic(iconFor(s,w.code))+'<span class="at">'+esc(w.text)+'</span></div>';
-    if(s.round)h+='<div class="qa"><button type="button" class="qbtn" data-act="round" data-sid="'+esc(s.sid)+'" data-round="'+esc(s.round)+'" data-title="'+esc(title)+'">'+ic('HelpCircleOutline')+t('answer')+'</button></div>';
-    else if(s.state==='wait'&&s.local)h+='<div class="qa"><button type="button" class="qbtn" data-act="open">'+ic('HelpCircleOutline')+t('open.desktop')+'</button></div>';
-    return h+'</div></div>';
+    var title=titleOf(s),w=whatOf(s),sid=esc(s.sid),b='';
+    var h='<div class="row '+s.state+'" data-local="'+esc(s.local||'')+'" data-sid="'+sid+'"><span class="dot '+s.state+'"></span><div class="tx"><div class="l1"><span class="nm" title="'+esc(title)+'">'+esc(title)+'</span><span class="tm" data-since="'+s.since+'">'+ago(s.since)+'</span></div>';
+    if(s.state!=='idle')h+='<div class="ac">'+ic(iconFor(s,w.code))+'<span class="at" title="'+esc(w.text)+'">'+esc(w.text)+'</span></div>';
+    if(s.state==='wait'&&s.more)h+='<div class="more" title="'+esc(s.more)+'">'+esc(s.more)+'</div>';
+    if(s.state==='done'&&s.said)h+='<div class="say" title="'+esc(s.said)+'">'+esc(s.said)+'</div>';
+    if(s.round)b+='<button type="button" class="qbtn" data-act="round" data-sid="'+sid+'" data-round="'+esc(s.round)+'" data-title="'+esc(title)+'">'+ic('HelpCircleOutline')+t('answer')+'</button>';
+    if(s.perm)b+='<button type="button" class="qbtn ok" data-act="permit" data-ans="allow" data-sid="'+sid+'">'+t('perm.allow')+'</button><button type="button" class="lbtn" data-act="permit" data-ans="deny" data-sid="'+sid+'">'+t('perm.deny')+'</button><button type="button" class="lbtn" data-act="permit" data-ans="dialog" data-sid="'+sid+'">'+t(s.local?'perm.desktop':'perm.dialog')+'</button>';
+    else if(!s.round&&s.state==='wait'&&s.local)b+='<button type="button" class="qbtn" data-act="open">'+ic('HelpCircleOutline')+t('open.desktop')+'</button>';
+    if(!s.local&&S.sel===s.sid)b+='<button type="button" class="lbtn" data-act="copy" data-sid="'+sid+'" title="'+t('copy.t')+'">'+ic('ContentCopy')+t(S.copied===s.sid?'copied':'copy.resume')+'</button>'+(s.cwd?'<button type="button" class="lbtn" data-act="folder" data-cwd="'+esc(s.cwd)+'">'+ic('FolderOutline')+t('open.folder')+'</button>':'');
+    return h+(b?'<div class="qa">'+b+'</div>':'')+'</div></div>';
   }
   function by(k){return LIST.filter(function(s){return s.state===k;});}
   function active(){return LIST.filter(function(s){return s.state!=='idle';});}
   function grp(title,arr){return arr.length?'<div class="gh"><span>'+title+'</span><span>'+arr.length+'</span></div>'+arr.map(row).join(''):'';}
+  // Without the hook nothing says what a session is doing: the card says so itself, with the button.
+  function hintHTML(){
+    return SET.hook&&!SET.hook.installed?'<div class="hint"><span>'+t('hint.hook')+'</span><button type="button" class="btn p" data-act="hook-go">'+t('hook.install')+'</button></div>':'';
+  }
+  function clock(ts){var d=new Date(ts);return d.getHours()+':'+('0'+d.getMinutes()).slice(-2);}
   function card(edge){
     var idle=by('idle'),act=active();
-    return '<div class="wg'+(edge?' e'+edge:'')+'"><div class="hdr grab">'+ic('ConsoleLine')+'<span class="tt">Claude</span><span class="ct">'+(act.length?t('active',{n:act.length}):t('quiet'))+'</span><span class="sp"></span><button type="button" class="ib" data-act="flip" title="'+t('settings')+'">'+ic('CogOutline')+'</button>'+(edge?'':'<button type="button" class="ib" data-act="min" title="'+t('minimize')+'">'+ic('Minus')+'</button>')+'</div>'+
-      '<div class="ss">'+grp(t('g.wait'),by('wait'))+grp(t('g.run'),by('run'))+grp(t('g.done'),by('done'))+
+    return '<div class="wg'+(edge?' e'+edge:'')+'"><div class="hdr grab">'+ic('ConsoleLine')+'<span class="tt">Claude</span><span class="ct">'+(act.length?t('active',{n:act.length}):t('quiet'))+(quiet()?' · '+t('quiet.till',{t:clock(CFG.quietUntil)}):'')+'</span><span class="sp"></span><button type="button" class="ib" data-act="flip" title="'+t('settings')+'">'+ic('CogOutline')+'</button>'+(edge?'':'<button type="button" class="ib" data-act="min" title="'+t('minimize')+'">'+ic('Minus')+'</button>')+'</div>'+
+      '<div class="ss">'+hintHTML()+grp(t('g.wait'),by('wait'))+grp(t('g.run'),by('run'))+grp(t('g.done'),by('done'))+
       (idle.length?'<button type="button" class="grp'+(S.idleOpen?' open':'')+'" data-act="idle">'+ic('ChevronRight')+t('g.idle')+'<span class="n">'+idle.length+'</span></button>'+(S.idleOpen?idle.map(row).join(''):''):'')+
       (LIST.length?'':'<div class="empty">'+t('empty')+'</div>')+'</div>'+
       limHTML()+'</div>';
   }
+  // What is told of with a sound — a session asks, its turn is over, it stopped with an error: the
+  // sound's name between ‹ and › (a click on the name plays it, on an arrow takes the next one and
+  // plays that) and the switch.
+  function sndRow(ev){
+    var e=TOLD[ev],b='<button type="button" data-act="snd" data-ev="'+ev+'" ';
+    return '<div class="sn"><span class="snl">'+t('ev.'+ev)+'</span><span class="pick">'+b+'class="pb" data-d="-1">‹</button>'+b+'class="pn" data-d="0" title="'+t('snd.play')+'">'+t('snd.'+CFG[e.snd])+'</button>'+b+'class="pb" data-d="1">›</button></span><button type="button" class="tgl'+(CFG[e.on]?' on':'')+'" data-act="chip" data-key="'+e.on+'" title="'+t('ev.'+ev)+'"></button></div>';
+  }
+  function chip(key,on,label){return '<button type="button" class="chip'+(on?' on':'')+'" data-act="chip" data-key="'+key+'">'+t(label)+'</button>';}
   function hookHTML(){
     var h=SET.hook||{installed:false};
     if(SET.confirm==='install')return '<div class="hk"><div class="hk1">'+t('hook.ask.install')+'</div><div class="hkb"><button type="button" class="btn p" data-act="hook-yes">'+t('hook.add')+'</button><button type="button" class="btn" data-act="hook-no">'+t('no')+'</button></div></div>';
@@ -104,13 +130,17 @@
     return '<div class="opt"><span>'+t('hook')+'<br><small class="'+(h.installed?'okc':'mut')+'">'+t(h.installed?'hook.on':'hook.off')+'</small></span><button type="button" class="btn" data-act="hook">'+t(h.installed?'hook.uninstall':'hook.install')+'</button></div>'+(SET.err?'<div class="err">'+esc(SET.err)+'</div>':'');
   }
   function settings(edge){
-    return '<div class="wg'+(edge?' e'+edge:'')+'"><div class="hdr grab">'+ic('CogOutline')+'<span class="tt">'+t('settings')+'</span><span class="sp"></span><button type="button" class="ib" data-act="flip" title="'+t('back')+'">'+ic('Close')+'</button></div>'+
+    return '<div class="wg'+(edge?' e'+edge:'')+'"><div class="hdr grab">'+ic('CogOutline')+'<span class="tt">'+t('settings')+'</span><span class="sp"></span><button type="button" class="ib" data-act="flip" title="'+t('back')+'">'+ic('Close')+'</button></div><div class="sb">'+
       '<div class="sec"><div class="sl">'+t('character')+'</div><div class="kinds">'+Object.keys(KINDS).map(function(k){return '<button type="button" class="kd'+(CFG.kind===k?' on':'')+'" data-act="kind" data-kind="'+k+'"><span class="mini" data-mini="'+k+'"></span><span>'+t('kind.'+k)+'</span></button>';}).join('')+'</div></div>'+
       '<div class="sec"><div class="sl">'+t('edge')+'</div><div class="kinds">'+EDGES.map(function(e){return '<button type="button" class="kd'+(CFG.edge===e?' on':'')+'" data-act="edge" data-edge="'+e+'">'+edgePreview(e)+'<span>'+t('edge.'+e)+'</span></button>';}).join('')+'</div></div>'+
       '<div class="opt"><span>'+t('language')+'</span><span class="seg">'+I18N.LANGS.map(function(l){return '<button type="button" class="'+(I18N.lang()===l[0]?'on':'')+'" data-act="lang" data-lang="'+l[0]+'">'+l[1]+'</button>';}).join('')+'</span></div>'+
-      '<div class="opt"><span>'+t('sound')+'</span><button type="button" class="tgl'+(CFG.sound!==false?' on':'')+'" data-act="sound" title="'+t('sound.t')+'"></button></div>'+
+      '<div class="sec bt"><div class="sl">'+t('notify')+'</div>'+sndRow('ask')+sndRow('done')+sndRow('fail')+
+        '<div class="vol" title="'+t('volume')+'">'+ic('VolumeHigh')+'<input type="range" min="0" max="100" step="5" value="'+CFG.volume+'" data-act="vol"></div>'+
+        '<div class="chips">'+chip('remind',CFG.remind,'n.remind')+chip('toast',CFG.toast,'n.toast')+'</div></div>'+
+      (OS?'':'<div class="opt"><span>'+t('cover')+'</span><button type="button" class="tgl'+(CFG.cover?' on':'')+'" data-act="cover" title="'+t('cover')+'"></button></div>')+
+      '<div class="opt"><span>'+t('perm')+'<br><small class="mut">'+t('perm.note')+'</small></span><button type="button" class="tgl'+(CFG.perm?' on':'')+'" data-act="perm" title="'+t('perm')+'"></button></div>'+
       '<div class="opt"><span>'+t(OS?'autostart.'+OS:'autostart')+'</span><button type="button" class="tgl'+(SET.autostart?' on':'')+'" data-act="autostart" title="'+t('autostart.t')+'"></button></div>'+
-      hookHTML()+'<div class="ver">'+esc(SET.ver)+'</div></div>';
+      hookHTML()+'<div class="ver">'+esc(SET.ver)+'</div></div></div>';
   }
   // Collapsed at an edge. The strip: a dot per active session and the nearest limit as a bar. The pet
   // peeking out (half of it from a side, upside down from the top) over a short strip. The line: grey
@@ -247,7 +277,7 @@
   var OFF={r:'translateX(100%)',l:'translateX(-100%)',t:'translateY(-100%)'};
   function slide(open){return animating(async function(){
     await play(root.firstElementChild,[{transform:'none'},{transform:OFF[S.dock]}],open?90:160,EASE_IN,true);
-    S.open=open;if(!open){S.back=false;SET.confirm=null;}
+    S.open=open;if(!open){S.back=false;SET.confirm=null;S.sel=null;}
     await enter(null,{transform:OFF[S.dock]},open?220:180);
   });}
   function docked(){return animating(function(){return enter(null,{transform:OFF[S.dock]},200,null,true);});}
@@ -267,13 +297,13 @@
   // The card turns over: a quarter turn away, the other side drawn edge-on, a quarter turn back. It
   // shrinks a little on the way, so its near edge, coming closer, stays inside the window.
   function turn(a,s){return {transform:'perspective(1000px) rotateY('+a+'deg) scale('+s+')'};}
-  function flip(){return animating(async function(){
+  function flip(ask){return animating(async function(){
     var back=!S.back,hop=false;
     // What the back shows loads while the card turns away.
     var load=back&&Promise.all([invoke('autostart_get').catch(function(){return SET.autostart;}),invoke('hook_status').catch(function(){return SET.hook;})]);
     await play(root.querySelector('.wg'),[turn(0,1),turn(90,.8)],150,EASE_IN,true);
     if(load){var got=await load;SET.autostart=got[0];SET.hook=got[1];}
-    S.back=back;SET.confirm=null;SET.err='';
+    S.back=back;SET.confirm=back&&ask?ask:null;SET.err='';
     // A taller side near the bottom of the screen moves the card up: the pet hops off meanwhile and
     // lands on the new top.
     await relayout(null,function(v){v.querySelector('.wg').style.transform=turn(-90,.8).transform;},function(){hop=true;root.querySelector('.sit').style.opacity=0;return painted();});
@@ -297,12 +327,14 @@
     if(el.tagName==='CANVAS'){var sp=el===big.canvas?big:small,r=el.getBoundingClientRect();return Pixel.opaqueAt(sp,x-r.left,y-r.top);}
     return true;
   }
+  var MAXH=0;
+  function setMaxH(p){var h=Math.floor(p.work.h/p.scale)-BAND-8;if(h>0&&h!==MAXH){MAXH=h;document.documentElement.style.setProperty('--maxh',h+'px');}}
   function setIgnore(on){if(on!==ignoring){ignoring=on;invoke('ignore',{on:on});}}
   async function poll(){
     if(busy)return;busy=true;
     try{
       var p=await invoke('poll'),sc=p.scale,x=(p.cursor[0]-p.win.x)/sc,y=(p.cursor[1]-p.win.y)/sc;
-      Pixel.pointer.x=x;Pixel.pointer.y=y;
+      Pixel.pointer.x=x;Pixel.pointer.y=y;setMaxH(p);
       var inside=x>=0&&y>=0&&x<p.win.w/sc&&y<p.win.h/sc,now=performance.now();
       if(!drag){
         var solid=inside&&solidAt(x,y);setIgnore(!solid);
@@ -371,7 +403,13 @@
   });
   root.addEventListener('click',async function(e){
     var a=e.target.closest('[data-act]'),r=e.target.closest('.row');
-    if(!a){if(r&&r.dataset.local)invoke('open_session',{local:r.dataset.local});return;}
+    if(!a){
+      // A session Desktop knows opens there; one in a terminal unfolds what can be done with it.
+      if(!r)return;
+      if(r.dataset.local)invoke('open_session',{local:r.dataset.local});
+      else if(!S.anim){S.sel=S.sel===r.dataset.sid?null:r.dataset.sid;S.copied=null;await relayout();}
+      return;
+    }
     if(S.anim)return;
     var act=a.getAttribute('data-act');
     if(act==='min'){await fold();savePlace();}
@@ -379,7 +417,19 @@
     else if(act==='flip')await flip();
     else if(act==='kind'){setKind(a.dataset.kind);save({kind:CFG.kind});render();align();}
     else if(act==='edge'){CFG.edge=a.dataset.edge;save({edge:CFG.edge});render();align();}
-    else if(act==='sound'){CFG.sound=CFG.sound===false;save({sound:CFG.sound});render();align();if(CFG.sound)chirp();}
+    else if(act==='chip'){
+      // Turned on, each is tried at once: the sound is heard, the notification shown.
+      var k=a.dataset.key,on=!CFG[k],pt={},ev={sound:'ask',soundDone:'done',soundFail:'fail'}[k];CFG[k]=pt[k]=on;save(pt);render();align();
+      if(on&&ev)tell(ev,true);else if(on&&k==='toast')invoke('notify',{title:NAME,body:t('n.toast.try')});
+    }
+    else if(act==='snd'){
+      var e=TOLD[a.dataset.ev],names=Sounds.NAMES,d=+a.dataset.d,ps={};
+      if(d){CFG[e.snd]=ps[e.snd]=names[(names.indexOf(CFG[e.snd])+d+names.length)%names.length];save(ps);render();align();}
+      tell(a.dataset.ev,true);
+    }
+    else if(act==='cover'){CFG.cover=!CFG.cover;save({hideOnFullscreen:CFG.cover});render();align();}
+    else if(act==='perm'){CFG.perm=!CFG.perm;save({permFromCard:CFG.perm});render();align();}
+    else if(act==='hook-go')await flip('install');
     else if(act==='lang'){I18N.set(a.dataset.lang);await invoke('set_lang',{lang:I18N.lang()});await relayout();}
     else if(act==='autostart'){try{SET.autostart=await invoke('autostart_set',{on:!SET.autostart});SET.err='';}catch(x){SET.err=t('autostart.err',{e:x});}render();align();}
     else if(act==='hook'){SET.confirm=SET.hook&&SET.hook.installed?'uninstall':'install';await relayout();}
@@ -387,7 +437,23 @@
     else if(act==='hook-yes'){var which=SET.confirm;SET.confirm=null;try{SET.hook=await invoke(which==='install'?'hook_install':'hook_uninstall');SET.err='';}catch(x){SET.err=String(x);}await relayout();}
     else if(act==='open'&&r&&r.dataset.local)invoke('open_session',{local:r.dataset.local});
     else if(act==='round')invoke('open_round',{sid:a.dataset.sid,name:a.dataset.round,title:a.dataset.title});
+    else if(act==='permit'){
+      // «In Desktop» leaves the request to Desktop's own dialog — and goes there.
+      a.parentNode.querySelectorAll('button').forEach(function(x){x.disabled=true;});
+      invoke('permit',{sid:a.dataset.sid,answer:a.dataset.ans});
+      if(a.dataset.ans==='dialog'&&r&&r.dataset.local)invoke('open_session',{local:r.dataset.local});
+    }
+    else if(act==='copy'){
+      if(await invoke('copy_text',{text:'claude --resume '+a.dataset.sid})){
+        S.copied=a.dataset.sid;render();align();
+        setTimeout(function(){if(S.copied){S.copied=null;if(!S.anim&&!drag)refresh();}},1600);
+      }
+    }
+    else if(act==='folder')invoke('open_folder',{path:a.dataset.cwd});
   });
+
+  root.addEventListener('input',function(e){if(e.target.getAttribute('data-act')==='vol')CFG.volume=+e.target.value;});
+  root.addEventListener('change',function(e){if(e.target.getAttribute('data-act')==='vol'){CFG.volume=+e.target.value;save({volume:CFG.volume});tell('ask',true);}});
 
   // New data: re-render what is on screen; resize the window only when the content's size changed,
   // so a session switching tools does not make the widget twitch.
@@ -402,52 +468,109 @@
     var c=hid&&root.querySelector('.lnw .peek canvas');if(c)peekOut(c);
   }
   // The widget's only sound: a short chirp when a session starts waiting for you.
-  var audio=null,primed=false;
-  function chirp(){try{audio=audio||new AudioContext();[[660,0,.16],[880,.14,.24]].forEach(function(t){var o=audio.createOscillator(),g=audio.createGain(),at=audio.currentTime+t[1];o.frequency.setValueAtTime(t[0],at);g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(.16,at+.02);g.gain.exponentialRampToValueAtTime(.001,at+t[2]);o.connect(g);g.connect(audio.destination);o.start(at);o.stop(at+t[2]+.05);});}catch(e){}}
+  var primed=false,lastAsk=Date.now(),wasQuiet=false,lastTray='',REMIND=5*60000;
+  // What is told of with a sound, each with its own (sounds.js has them): a session that starts
+  // waiting for you, a turn that is over, a turn that stopped with an error. `on` and `snd` are
+  // the settings — whether, and which; `vol` is how loud next to the others.
+  var TOLD={ask:{on:'sound',snd:'sndAsk',vol:.33},done:{on:'soundDone',snd:'sndDone',vol:.2},fail:{on:'soundFail',snd:'sndFail',vol:.33}};
+  // The user's volume (50 is the middle) scales it, a little steeper than straight so that the
+  // slider's ends are heard. `anyway`: played from the settings, to hear it.
+  function tell(ev,anyway){var e=TOLD[ev];if(anyway||CFG[e.on])Sounds.play(CFG[e.snd],e.vol*Math.pow(CFG.volume/50,1.6));}
+  // «Do not disturb» for an hour, from the tray: no sound, no notification, no nudge.
+  function quiet(){return CFG.quietUntil>Date.now();}
+  // Collapsed at an edge, the widget nudges out once.
+  function nudge(){
+    if(!S.dock||S.open)return;
+    bumpUntil=performance.now()+800;
+    var e=root.querySelector('.edge');if(e)e.classList.add('bump');
+    setTimeout(function(){var e=root.querySelector('.edge.bump');if(e)e.classList.remove('bump');},800);
+  }
+  // The tray icon's words on hover — who waits, who works, the nearest limit — and the tick at
+  // «do not disturb»; told to Rust only when they change.
+  function trayState(){
+    var w=by('wait').length,r=by('run').length,m=maxLim(),parts=[];
+    if(w)parts.push(t('tip.wait',{n:w}));if(r)parts.push(t('tip.run',{n:r}));
+    var tip=NAME+' — '+(parts.length?parts.join(', '):t('quiet'))+(m?' · '+m.l+' '+m.p+'%':''),q=quiet(),key=tip+'|'+q;
+    if(key!==lastTray){lastTray=key;invoke('tray_state',{tip:tip,quiet:q});}
+  }
   function onData(list){
+    list=list||[];
     var wasDone={},wasWait={};LIST.forEach(function(x){if(x.state==='done')wasDone[x.sid]=1;if(x.state==='wait')wasWait[x.sid+'|'+(x.round||x.what)]=1;});
-    if(list.some(function(x){return x.state==='done'&&!wasDone[x.sid];})&&LIST.length)lastDone=Date.now();
-    var asks=primed&&list.some(function(x){return x.state==='wait'&&!wasWait[x.sid+'|'+(x.round||x.what)];});
-    if(asks&&CFG.sound!==false)chirp();
-    // Collapsed at an edge, the widget also nudges out once when a session starts waiting.
-    if(asks&&S.dock&&!S.open){bumpUntil=performance.now()+800;setTimeout(function(){var e=root.querySelector('.edge.bump');if(e)e.classList.remove('bump');},800);}
+    var ended=LIST.length?list.filter(function(x){return x.state==='done'&&!wasDone[x.sid];}):[];
+    if(ended.length)lastDone=Date.now();
+    var asks=primed?list.filter(function(x){return x.state==='wait'&&!wasWait[x.sid+'|'+(x.round||x.what)];}):[];
+    // A session that starts waiting for you: the chirp, the nudge and, if asked for, a system
+    // notification. One whose turn is over: the softer notes; a notification only if it stopped
+    // with an error.
+    if(primed&&!quiet()){
+      if(asks.length){
+        lastAsk=Date.now();
+        tell('ask');
+        nudge();
+      }else if(ended.length)tell(ended.some(function(x){return x.what==='@failed';})?'fail':'done');
+      if(CFG.toast)asks.concat(ended.filter(function(x){return x.what==='@failed';})).forEach(function(x){invoke('notify',{title:titleOf(x),body:whatOf(x).text});});
+    }
     primed=true;
-    LIST=list||[];applyMood();
+    LIST=list;applyMood();trayState();
+    if(S.sel&&!LIST.some(function(x){return x.sid===S.sel;}))S.sel=null;
     if(!drag)refresh();
   }
   listen('sessions',function(ev){onData(ev.payload);});
-  function setLimits(l){l=l||{};LIM=l.data&&l.status!=='login'?normLimits(l.data):null;LIMWHY=l.status||'';LIMAT=l.at||0;applyMood();if(!drag)refresh();}
+  function setLimits(l){l=l||{};LIM=l.data&&l.status!=='login'?normLimits(l.data):null;LIMWHY=l.status||'';LIMAT=l.at||0;applyMood();trayState();if(!drag)refresh();}
   listen('limits',function(ev){setLimits(ev.payload);});
   setInterval(function(){
     root.querySelectorAll('.tm[data-since]').forEach(function(t){t.textContent=ago(+t.getAttribute('data-since'));});
     root.querySelectorAll('[data-reset]').forEach(function(t){t.textContent=until(+t.getAttribute('data-reset'));});
     root.querySelectorAll('[data-ago]').forEach(function(t){t.textContent=agoTxt(+t.getAttribute('data-ago'));});
     applyMood();
+    // A session still waiting is told of again every five minutes, if asked for.
+    if(CFG.remind&&!quiet()&&by('wait').length&&Date.now()-lastAsk>=REMIND){lastAsk=Date.now();tell('ask');nudge();}
+    trayState();
+    // «quiet until …» leaves the header when its hour is over.
+    if(wasQuiet!==quiet()){wasQuiet=quiet();if(!drag)refresh();}
   },1000);
 
+  // From the tray: the card, or its settings, shown wherever the widget is — unfolded from the pet,
+  // slid out of an edge (and kept there long enough to get the cursor to it).
+  async function openCard(back){
+    if(S.anim||drag)return;
+    if(S.dock){if(!S.open)await slide(true);lastInside=performance.now()+4000;}
+    else if(S.mode==='cat'){await unfold();savePlace();}
+    if(S.back!==back)await flip();
+  }
   listen('tray',function(ev){
     var id=String(ev.payload);
     if(id.indexOf('mood:')===0){moodOverride=id==='mood:auto'?null:id.slice(5);applyMood();}
     else if(id.indexOf('kind:')===0){setKind(id.slice(5));save({kind:CFG.kind});if(S.back){render();align();}}
+    else if(id==='quiet'){CFG.quietUntil=quiet()?0:Date.now()+3600000;save({quietUntil:CFG.quietUntil});trayState();}
+    else if(id==='open')openCard(false);
+    else if(id==='settings')openCard(true);
   });
 
   (async function start(){
     var hint=await invoke('start_hint'),how=hint[0]||'',cfg=await invoke('get_config')||{};
-    I18N.set(cfg.lang);
-    try{SET.ver=(await window.__TAURI__.app.getName())+' '+(await window.__TAURI__.app.getVersion());}catch(e){}
+    I18N.set(cfg.lang);setMaxH(await invoke('poll'));
+    try{NAME=await window.__TAURI__.app.getName();SET.ver=NAME+' '+(await window.__TAURI__.app.getVersion());}catch(e){}
     if(cfg.kind)setKind(cfg.kind);
     if(cfg.sound===false)CFG.sound=false;
+    if(cfg.soundDone===false)CFG.soundDone=false;
+    CFG.remind=cfg.remind===true;CFG.toast=cfg.toast===true;CFG.cover=cfg.hideOnFullscreen!==false;CFG.perm=cfg.permFromCard===true;CFG.quietUntil=+cfg.quietUntil||0;
+    if(typeof cfg.volume==='number')CFG.volume=clamp(cfg.volume,0,100);if(cfg.soundFail===false)CFG.soundFail=false;
+    ['sndAsk','sndDone','sndFail'].forEach(function(k){if(Sounds.NAMES.indexOf(cfg[k])>=0)CFG[k]=cfg[k];});
+    try{SET.hook=await invoke('hook_status');}catch(e){}
     if(EDGES.indexOf(cfg.edge)>=0)CFG.edge=cfg.edge;
     if(cfg.idleOpen)S.idleOpen=true;
     var place=!how&&cfg.place&&typeof cfg.place.x==='number'?cfg.place:null;
     if(place){S.mode=place.mode==='card'?'card':'cat';S.dock=/^[lrt]$/.test(place.dock)?place.dock:null;S.mag=/^[lcr]$/.test(place.mag)?place.mag:'c';}
+    // The very first start, with no hook yet: the card comes up by itself, saying what is missing.
+    if(!how&&!cfg.place&&SET.hook&&!SET.hook.installed)S.mode='card';
     if(how==='card')S.mode='card';
     if(how==='settings'){S.mode='card';S.back=true;try{SET.autostart=await invoke('autostart_get');SET.hook=await invoke('hook_status');}catch(e){}}
     // dock-<edge>[-open][:<look>], e.g. dock-t-open or dock-r:peek.
     var look=how.split(':')[1];how=how.split(':')[0];if(EDGES.indexOf(look)>=0)CFG.edge=look;
     if(how.indexOf('dock-')===0){S.dock=how.charAt(5);S.open=/open$/.test(how);S.hold=S.open;}
     if(hint[1])moodOverride=hint[1];
-    LIST=await invoke('sessions');setLimits(await invoke('limits'));applyMood();
+    LIST=await invoke('sessions')||[];setLimits(await invoke('limits'));applyMood();
     if(hint[2]){var rp=hint[2].split('/');invoke('open_round',{sid:rp[0],name:rp[1],title:t('check')});}
     render();align();
     var p=await invoke('poll'),sc=p.scale,z=measure(sc),k=p.work;

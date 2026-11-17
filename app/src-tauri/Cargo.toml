@@ -22,9 +22,11 @@ serde_json = { version = "1", features = ["preserve_order"] }
 tauri-plugin-autostart = "2"
 auto-launch = "0.6"
 ureq = { version = "2", features = ["json"] }
+tauri-plugin-notification = "2"
+arboard = { version = "3", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [profile.release]
 opt-level = "s"

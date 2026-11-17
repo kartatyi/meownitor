@@ -24,7 +24,7 @@ const STALE_MS: u64 = 30 * 60 * 1000;
 const KEEP_STATE: Duration = Duration::from_secs(7 * 24 * 3600);
 const CLEAN_EVERY: Duration = Duration::from_secs(3600);
 
-#[derive(Serialize, Clone, PartialEq)]
+#[derive(Serialize, Clone, PartialEq, Default)]
 pub struct Session {
     sid: String,
     local: Option<String>,
@@ -36,6 +36,12 @@ pub struct Session {
     cwd: String,
     /// A question round waiting for an answer (rounds.rs), by name.
     round: Option<String>,
+    /// The beginning of Claude's last reply, while the session's turn is over («Your turn»).
+    said: String,
+    /// What a permission request asks to allow, in full, while the session waits on it.
+    more: String,
+    /// The request can be answered on the card: its hook is waiting for the click (perms.rs).
+    perm: bool,
 }
 
 pub struct Latest(pub Mutex<Vec<Session>>);
@@ -43,9 +49,12 @@ pub struct Latest(pub Mutex<Vec<Session>>);
 struct Hooked {
     cwd: String,
     transcript: String,
+    event: String,
     state: String,
     what: String,
     detail: String,
+    said: String,
+    more: String,
     since: u64,
     updated: u64,
 }
@@ -173,9 +182,12 @@ fn parse_hooked(p: &Path) -> Option<(String, Hooked)> {
         Hooked {
             cwd: str_of(&v, "cwd"),
             transcript: str_of(&v, "transcript"),
+            event: str_of(&v, "event"),
             state: str_of(&v, "state"),
             what: str_of(&v, "what"),
             detail: str_of(&v, "detail"),
+            said: str_of(&v, "said"),
+            more: str_of(&v, "more"),
             since: num("since"),
             updated: num("updated"),
         },
@@ -308,6 +320,7 @@ fn compose(
     desk: &Cache<Desk>,
     stopped: &[String],
     rounds: &[crate::rounds::Pending],
+    perms: &[crate::perms::Waiting],
     now: u64,
 ) -> Vec<Session> {
     let mut map: HashMap<String, Session> = HashMap::new();
@@ -336,6 +349,7 @@ fn compose(
                 since: d.last,
                 cwd: d.cwd.clone(),
                 round: None,
+                ..Default::default()
             },
         );
     }
@@ -368,6 +382,7 @@ fn compose(
             since: 0,
             cwd: h.cwd.clone(),
             round: None,
+            ..Default::default()
         });
         e.since = if state == "idle" {
             e.since.max(h.updated)
@@ -384,7 +399,31 @@ fn compose(
         } else {
             h.detail.clone()
         };
+        e.said = if state == "done" {
+            h.said.clone()
+        } else {
+            String::new()
+        };
+        e.more = if state == "wait" {
+            h.more.clone()
+        } else {
+            String::new()
+        };
         e.state = state;
+    }
+    // A permission request whose hook waits for a click on the card: the session waits for you
+    // whatever its other agents have reported since, and the row says what is asked.
+    for p in perms {
+        let e = map.entry(p.sid.clone()).or_insert_with(|| Session {
+            sid: p.sid.clone(),
+            ..Default::default()
+        });
+        e.state = "wait".into();
+        e.what = "@perm".into();
+        e.detail = p.detail.clone();
+        e.more = p.more.clone();
+        e.since = p.since;
+        e.perm = true;
     }
     // A pending round outranks whatever the hook last said: the session is waiting for you — for as
     // long as the round is unanswered, days after the session itself left the list. Such a row is
@@ -420,6 +459,7 @@ fn compose(
                     .or_else(|| h.map(|h| h.cwd.clone()))
                     .unwrap_or_default(),
                 round: None,
+                ..Default::default()
             }
         });
         e.state = "wait".into();
@@ -481,6 +521,21 @@ pub fn spawn(app: AppHandle) {
                 last_desk = Instant::now();
             }
             let pending = rounds.pending();
+            // A permission request waiting for a click on the card is let go once its session's
+            // turn is over or a new one began: there is nothing left to allow.
+            let mut perms = crate::perms::waiting();
+            perms.retain(|p| {
+                let over = hooks.values().any(|(sid, h)| {
+                    *sid == p.sid
+                        && h.updated > p.since
+                        && ["Stop", "StopFailure", "SessionEnd", "UserPromptSubmit"]
+                            .contains(&h.event.as_str())
+                });
+                if over {
+                    crate::perms::answer(&p.sid, "dialog");
+                }
+                !over
+            });
             // Release builds only: a build under work deletes nothing from the data folder.
             if !cfg!(debug_assertions) && cleaned.is_none_or(|t| t.elapsed() >= CLEAN_EVERY) {
                 let keep: Vec<&str> = pending.iter().map(|r| r.sid.as_str()).collect();
@@ -493,7 +548,7 @@ pub fn spawn(app: AppHandle) {
                 }
                 cleaned = Some(Instant::now());
             }
-            let list = compose(&hooks, &desk, &stopped, &pending, now);
+            let list = compose(&hooks, &desk, &stopped, &pending, &perms, now);
             if last_sent.as_ref() != Some(&list) {
                 if let Some(latest) = app.try_state::<Latest>() {
                     *latest.0.lock().unwrap() = list.clone();
@@ -542,9 +597,12 @@ mod tests {
         Hooked {
             cwd: "C:/work/api-server".into(),
             transcript: String::new(),
+            event: String::new(),
             state: state.into(),
             what: "@perm".into(),
             detail: String::new(),
+            said: "All 13 tests pass.".into(),
+            more: "cargo test".into(),
             since: now - quiet_ms,
             updated: now - quiet_ms,
         }
@@ -583,6 +641,7 @@ mod tests {
             &Cache::new(),
             &["stopped".to_string()],
             &rounds,
+            &[],
             now,
         );
         let state = |sid: &str| list.iter().find(|s| s.sid == sid).map(|s| s.state.as_str());
@@ -603,6 +662,49 @@ mod tests {
             ),
             ("wait", Some("pick"), "C:/work/api-server"),
             "a round asked three days ago is still there to answer, named by its folder"
+        );
+    }
+
+    /// What was said shows only while the turn is over, what is asked only while the session
+    /// waits; a request whose hook waits for the card makes the session wait whatever it said last.
+    #[test]
+    fn the_reply_shows_when_done_and_the_request_when_waiting() {
+        let now = 10 * OPEN_FOR_MS;
+        let hooks = cache(vec![
+            ("done", hooked("done", 60_000, now)),
+            ("waits", hooked("wait", 60_000, now)),
+            ("busy", hooked("run", 60_000, now)),
+        ]);
+        let perms = [crate::perms::Waiting {
+            sid: "busy".into(),
+            tool: "Bash".into(),
+            detail: "Bash · Deploy".into(),
+            more: "./deploy.sh production".into(),
+            since: now - 5_000,
+        }];
+        let list = compose(&hooks, &Cache::new(), &[], &[], &perms, now);
+        let of = |sid: &str| list.iter().find(|s| s.sid == sid).unwrap();
+        assert_eq!(
+            (of("done").said.as_str(), of("done").more.as_str()),
+            ("All 13 tests pass.", "")
+        );
+        assert_eq!(
+            (
+                of("waits").said.as_str(),
+                of("waits").more.as_str(),
+                of("waits").perm
+            ),
+            ("", "cargo test", false)
+        );
+        let busy = of("busy");
+        assert_eq!(
+            (
+                busy.state.as_str(),
+                busy.what.as_str(),
+                busy.more.as_str(),
+                busy.perm
+            ),
+            ("wait", "@perm", "./deploy.sh production", true)
         );
     }
 

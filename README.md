@@ -42,8 +42,25 @@ needs from you:
 - **Your turn**: the turn is over, the ball is in your court;
 - **Idle**, folded away.
 
-A click on a Desktop session opens it there. The pet's mood follows the sessions, and it chirps once
-when a session starts waiting for you.
+A session that asks for permission shows what it asks to allow, in full; one whose turn is over, the
+beginning of what Claude said. A click on a Desktop session opens it there; a click on a terminal
+session offers its `claude --resume` command to copy and its folder to open. The pet's mood follows
+the sessions.
+
+### It tells you
+
+A sound when a session starts waiting for you, another when a turn is over, a third when one stops
+with an error — each yours to pick from a dozen: three meows, two quacks, a croak, a cluck and a
+plop, which are [recordings](app/src/sounds/README.md), and a cuckoo, a pew, a coin and the chirp
+it has always had, which are made on the spot. There is a volume slider and a switch for each. If you ask for it, the sound comes again every five minutes
+while a session keeps waiting, and a system notification goes with it. **Do not disturb for an
+hour** in the tray menu silences all of it.
+
+### Permissions on the card
+
+Off until you turn it on in the settings. Then a permission request comes to the card first, with
+**Allow**, **Deny** and **In the terminal** on the session's row. The hook waits up to two minutes for
+your click and otherwise leaves the request to Claude Code's own dialog.
 
 ### Plan limits
 
@@ -94,7 +111,7 @@ slides the card out when you hover over it.
 <td width="50%" align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
-  <img alt="Settings: the character, the language, the sound, start at login, the Claude Code hook" src="docs/screenshots/settings-light.png" width="300">
+  <img alt="Settings: the character, the edge look, the language, a sound for each notification and the volume, hiding under full-screen apps, permissions on the card, start at login, the Claude Code hook" src="docs/screenshots/settings-light.png" width="300">
 </picture>
 </td>
 <td width="50%" align="center">
@@ -106,8 +123,9 @@ slides the card out when you hover over it.
 </tr>
 </table>
 
-The gear turns the card over: the character, English or Ukrainian, the ask sound, start at login,
-and the Claude Code hook, which you install or remove with one click.
+The gear turns the card over: the character, English or Ukrainian, what it tells you and how, hiding
+under a full-screen window (Windows), permissions on the card, start at login, and the Claude Code
+hook, which you install or remove with one click.
 
 ## Install
 
@@ -141,8 +159,10 @@ Desktop for Linux, so there the widget shows the sessions you run in a terminal.
    > `xattr -dr com.apple.quarantine /Applications/Meownitor.app`. Every release lists the files'
    > SHA-256 in `SHA256SUMS.txt`.
 
-2. The pet appears in the bottom-right corner. Click it to open the card, then click the gear ⚙.
-3. **Claude Code hook → Install.** This adds the widget's hook to `~/.claude/settings.json`. Your other
+2. The pet appears in the bottom-right corner with its card open, and the card says that the Claude
+   Code hook is not installed.
+3. **Install** there, then **Add** (later it is the gear ⚙ → **Claude Code hook**). This adds the
+   widget's hook to `~/.claude/settings.json`. Your other
    hooks stay as they are, and a backup of the file goes next to it. A session shows up on the next
    thing it does. The `meownitor-round` skill, for questions with pictures, goes into
    `~/.claude/skills/` with it, and every update of the widget brings its own.
@@ -161,10 +181,11 @@ and follow steps 2–4.
 | `–` in the card's header | back to just the pet |
 | Drag the pet, the card's header or the strip | move it; it snaps to a screen edge |
 | Drop it at the left or right edge | dock it as a strip; hover over it to slide the card out |
-| Click a session | open it in Claude Desktop (sessions Desktop knows) |
+| Click a session | open it in Claude Desktop; a terminal session unfolds **claude --resume** (copies the command) and **Open the folder** |
 | **Answer** on a session | open its question round |
+| **Allow** / **Deny** / **In the terminal** on a session | answer its permission request, or leave it to Claude Code's dialog (if turned on in the settings) |
 | ⚙ | the settings |
-| The tray icon (the menu bar on macOS) | try the moods and characters, quit |
+| The tray icon (the menu bar on macOS) | open the card or the settings, hide the widget for an hour, do not disturb for an hour, the folder with data and logs, the moods and characters, quit. On Windows a click on the icon opens the card, and hovering says who waits and who works |
 
 ### Uninstall
 
@@ -199,6 +220,11 @@ flowchart LR
   turn you stopped. The folder is `~/.meownitor` on every system. On Windows it is not in AppData
   because Claude Desktop there is an MSIX package: everything it starts sees AppData through the
   package's own copy, so a session in Desktop and one in a terminal would write to different places.
+- **Permissions on the card.** With that turned on, the hook, run by Claude Code when it is about to
+  ask for permission, connects to the widget and waits — up to two minutes — for your click. The
+  port is on `127.0.0.1` only, and an answer can come from nowhere but the widget's own window: a
+  session can't write itself one. With no click, no widget or **In the terminal**, the hook says
+  nothing and Claude Code asks as it always does. `widget.log` keeps what was answered.
 - **Limits.** Once a minute the widget makes the request Claude Code's `/usage` makes. It is an account
   query, not a model call, so it costs nothing against your limits. It uses Claude Code's sign-in from
   `~/.claude/.credentials.json` and refreshes the token the way Claude Code does. On macOS, Claude Code
@@ -222,14 +248,16 @@ flowchart LR
   read). Tokens are never logged.
 - No telemetry and no analytics.
 - The hook records each session's state, the current tool's name and one short detail: the file's
-  name, the command's description, the search pattern. `events.log` keeps the last 512 KB of event
+  name, the command's description, the search pattern. While a session waits for permission it also
+  keeps what is asked, in full (the command, the path), and once a turn is over, the beginning of
+  Claude's last reply — both only for the card to show. `events.log` keeps the last 512 KB of event
   names.
 - The widget cleans up after itself: a session's state file goes a week after its last event, a
   session's rounds (pages, pictures, answers) a month after the last change in them. A round still
   waiting for your answer is never removed.
 - `~/.claude/settings.json` is changed only when you press Install or Remove, uninstall the app, or
-  an update moves the hook's copy or brings an event the hook did not listen to before, and it is
-  backed up first.
+  an update moves the hook's copy or installs it another way than before (an event the hook did not
+  listen to, a longer wait on a permission request), and it is backed up first.
 
 ## Build from source
 

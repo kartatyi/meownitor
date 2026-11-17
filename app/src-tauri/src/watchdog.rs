@@ -39,6 +39,8 @@ struct State {
     /// The window was shown. Before that GTK has no window to make click-through (tao unwraps the
     /// GdkWindow that isn't there yet), so click-through waits for `show`.
     shown: bool,
+    /// The widget hid its own window (visible.rs): nothing to watch until it is back.
+    away: bool,
     /// How far the watchdog has gone since the last poll (0 = not at all).
     step: u8,
 }
@@ -82,6 +84,19 @@ pub fn shown(w: &WebviewWindow, beat: &Beat) {
     let _ = w.set_ignore_cursor_events(ignore);
 }
 
+/// The widget hid its own window, or is about to bring it back (visible.rs): away, the page is not
+/// watched, and the count starts over either way. Returns whether the window is to be shown
+/// again — it was away, and the page had asked for it to show.
+pub fn away(beat: &Beat, on: bool) -> bool {
+    let mut s = beat.0.lock().unwrap();
+    let back = s.away && !on && s.shown;
+    s.away = on;
+    if s.last.is_some() {
+        s.last = Some(Instant::now());
+    }
+    back
+}
+
 /// `page_hidden`: visibility changes start the count over.
 pub fn hidden(beat: &Beat, hidden: bool) {
     let mut s = beat.0.lock().unwrap();
@@ -95,7 +110,8 @@ pub fn hidden(beat: &Beat, hidden: bool) {
 /// move under one lock, since a poll may come in at any moment.
 fn advance(beat: &Beat, to: u8, after: Duration) -> bool {
     let mut s = beat.0.lock().unwrap();
-    let due = s.step + 1 == to && !s.hidden && s.last.is_some_and(|t| t.elapsed() >= after);
+    let due =
+        s.step + 1 == to && !s.hidden && !s.away && s.last.is_some_and(|t| t.elapsed() >= after);
     if due {
         s.step = to;
     }

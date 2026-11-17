@@ -25,6 +25,12 @@ impl Lang {
 
     pub fn tr(self, key: &str) -> &'static str {
         let (en, uk) = match key {
+            "open" => ("Open the card", "Відкрити картку"),
+            "settings" => ("Settings", "Налаштування"),
+            "hide" => ("Hide for an hour", "Сховати на годину"),
+            "unhide" => ("Show the widget", "Показати віджет"),
+            "quiet" => ("Do not disturb for an hour", "Не турбувати годину"),
+            "data" => ("Data and logs folder", "Тека з даними й логами"),
             "mood" => ("Mood", "Настрій"),
             "mood:auto" => ("Auto — follows the sessions", "Авто — за сесіями"),
             "mood:idle" => ("Resting", "Відпочиває"),

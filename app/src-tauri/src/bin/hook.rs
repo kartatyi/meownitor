@@ -34,6 +34,37 @@ fn short(s: &str, n: usize) -> String {
     out
 }
 
+/// All on one line — runs of whitespace become a space — and trimmed to `n` characters.
+fn clip(s: &str, n: usize) -> String {
+    let flat = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out: String = flat.chars().take(n).collect();
+    if flat.chars().count() > n {
+        out.push('…');
+    }
+    out
+}
+
+/// What a permission request asks to allow, in full: the command itself rather than its
+/// description, the whole path, the address — its lines kept, up to `n` characters.
+fn asked(tool: &str, input: &Value, n: usize) -> String {
+    let s = |k: &str| input.get(k).and_then(|v| v.as_str()).unwrap_or("");
+    let text = match tool {
+        "Bash" | "PowerShell" => s("command").to_string(),
+        "Read" | "Edit" | "Write" | "MultiEdit" => s("file_path").to_string(),
+        "NotebookEdit" => s("notebook_path").to_string(),
+        "WebFetch" => s("url").to_string(),
+        "WebSearch" => s("query").to_string(),
+        _ if input.is_object() => input.to_string(),
+        _ => String::new(),
+    };
+    let text = text.trim();
+    let mut out: String = text.chars().take(n).collect();
+    if text.chars().count() > n {
+        out.push('…');
+    }
+    out
+}
+
 fn base_name(p: &str) -> String {
     p.rsplit(['/', '\\']).next().unwrap_or(p).to_string()
 }
@@ -89,7 +120,9 @@ fn log_event(dir: &std::path::Path, now: u64, sid: &str, event: &str, tool: &str
         .append(true)
         .open(&path)
     {
-        let _ = writeln!(f, "{now} {} {event} {tool}", &sid[..sid.len().min(8)]);
+        // One write per line: two hooks at once used to mix theirs.
+        let line = format!("{now} {} {event} {tool}\n", &sid[..sid.len().min(8)]);
+        let _ = f.write_all(line.as_bytes());
     }
 }
 
@@ -287,6 +320,52 @@ fn page_problems(html: &str) -> Vec<&'static str> {
     out
 }
 
+/// How long the hook waits for an answer from the card before the request goes on to Claude Code's
+/// own dialog. The widget lets it go sooner: on «In the terminal», or once the turn is over.
+const ASK_WIDGET_FOR: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Asks the widget to put «Allow / Deny» on the session's row (perms.rs has the widget's side) and
+/// waits for the click. Only when config.json says `permFromCard`, and only a running widget can
+/// answer: the hook connects to the port the widget wrote into perm-port, on this machine alone.
+/// Returns the decision as Claude Code reads it, or None — no widget, no answer, «In the terminal».
+fn ask_widget(base: &Path, sid: &str, tool: &str, detail: &str, more: &str) -> Option<String> {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::{Ipv4Addr, SocketAddr, TcpStream};
+    let cfg = std::fs::read_to_string(base.join("config.json")).ok()?;
+    let cfg: Value = serde_json::from_str(&cfg).ok()?;
+    if cfg.get("permFromCard").and_then(|v| v.as_bool()) != Some(true) {
+        return None;
+    }
+    let port: u16 = std::fs::read_to_string(base.join("perm-port"))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let mut stream =
+        TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(300)).ok()?;
+    let ask = json!({ "sid": sid, "tool": tool, "detail": detail, "more": more });
+    stream.write_all(format!("{ask}\n").as_bytes()).ok()?;
+    stream.set_read_timeout(Some(ASK_WIDGET_FOR)).ok()?;
+    let mut answer = String::new();
+    BufReader::new(stream).read_line(&mut answer).ok()?;
+    decision(answer.trim())
+}
+
+/// The widget's word as PermissionRequest's decision; anything but allow and deny is no decision.
+fn decision(word: &str) -> Option<String> {
+    let d = match word {
+        "allow" => json!({ "behavior": "allow" }),
+        "deny" => {
+            json!({ "behavior": "deny", "message": "Denied by the user in the Meownitor widget" })
+        }
+        _ => return None,
+    };
+    let out =
+        json!({ "hookSpecificOutput": { "hookEventName": "PermissionRequest", "decision": d } });
+    Some(out.to_string())
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if let Some(code) = round_command(&args) {
@@ -319,6 +398,7 @@ fn main() {
         .unwrap_or_else(|| json!({}));
     let prev = |k: &str| st.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let (prev_state, prev_what, prev_detail) = (prev("state"), prev("what"), prev("detail"));
+    let (prev_more, prev_said) = (prev("more"), prev("said"));
 
     let event = str_of("hook_event_name");
     let tool = str_of("tool_name");
@@ -381,15 +461,40 @@ fn main() {
     if changed || st.get("since").is_none() {
         st["since"] = json!(now);
     }
+    // `more`: what a permission request asks to allow, in full, for as long as the session waits
+    // on it. `said`: the beginning of Claude's last reply once the turn is over — on an API error,
+    // the error as Claude Code words it.
+    let more = match event.as_str() {
+        "PermissionRequest" => asked(&tool, &input, 600),
+        _ if state == "wait" && prev_state == "wait" => prev_more,
+        _ => String::new(),
+    };
+    let said = match event.as_str() {
+        "Stop" | "StopFailure" => clip(&str_of("last_assistant_message"), 400),
+        _ if state == "done" => prev_said,
+        _ => String::new(),
+    };
     st["state"] = json!(state);
     st["what"] = json!(what);
     st["detail"] = json!(detail);
+    st["more"] = json!(more);
+    st["said"] = json!(said);
 
     log_event(&dir, now, &sid, &event, &tool);
 
     let tmp = dir.join(format!("{sid}.{}.tmp", std::process::id()));
     if std::fs::write(&tmp, st.to_string()).is_ok() && std::fs::rename(&tmp, &path).is_err() {
         let _ = std::fs::remove_file(&tmp);
+    }
+
+    // A permission request can be answered on the card, if the user turned that on: the answer is
+    // this hook's output, and with none the request goes on to Claude Code's own dialog.
+    if event == "PermissionRequest" {
+        if let Some(base) = dir.parent() {
+            if let Some(decision) = ask_widget(base, &sid, &tool, &detail, &more) {
+                print!("{decision}");
+            }
+        }
     }
 
     // What this hook prints on UserPromptSubmit, Claude reads along with the message.
@@ -403,6 +508,37 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_allow_and_deny_are_decisions() {
+        let allow: Value = serde_json::from_str(&decision("allow").unwrap()).unwrap();
+        assert_eq!(allow["hookSpecificOutput"]["decision"]["behavior"], "allow");
+        assert_eq!(
+            allow["hookSpecificOutput"]["hookEventName"],
+            "PermissionRequest"
+        );
+        let deny: Value = serde_json::from_str(&decision("deny").unwrap()).unwrap();
+        assert_eq!(deny["hookSpecificOutput"]["decision"]["behavior"], "deny");
+        for word in ["dialog", "", "ALLOW", "allow all"] {
+            assert!(decision(word).is_none(), "{word:?} decides nothing");
+        }
+    }
+
+    #[test]
+    fn what_is_asked_comes_in_full_and_what_was_said_on_one_line() {
+        let input = json!({ "command": "rm -rf build\ncargo build", "description": "Rebuild" });
+        assert_eq!(asked("Bash", &input, 600), "rm -rf build\ncargo build");
+        assert_eq!(asked("Bash", &input, 6), "rm -rf…");
+        assert_eq!(
+            asked("Write", &json!({ "file_path": "C:/a/b.rs" }), 600),
+            "C:/a/b.rs"
+        );
+        assert_eq!(
+            clip("Done.\n\n  Two files   changed.", 400),
+            "Done. Two files changed."
+        );
+        assert_eq!(clip("abcdef", 3), "abc…");
+    }
 
     #[test]
     fn a_page_that_cannot_work_is_not_asked() {

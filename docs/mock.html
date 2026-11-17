@@ -2,7 +2,8 @@
 <!-- The widget's own page (app/src) outside the app, on made-up sessions and limits, for the README
      pictures: open docs/mock.html?lang=en&how=card (how: cat, card, settings, dock; mood: idle, work,
      ask, done, sleep, tired; kind: cat, blob, ghost; theme: dark, light; bg: none for a transparent
-     page) and screenshot it. docs/hero.html puts several on one picture; docs/shoot.py renders them. -->
+     page; perm=1 for a permission request, hook=off and empty=1 for a first start, sel=<sid> for a
+     row unfolded, wh=<px> for a screen that low) and screenshot it. docs/hero.html puts several on one picture; docs/shoot.py renders them. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -35,10 +36,13 @@
     {sid:'a1',local:'local_1',title:uk?'Оновити залежності':'Bump the dependencies',state:'wait',what:'@ask',detail:'',since:now-2*min,cwd:'',round:'deps'},
     {sid:'b2',local:'local_2',title:uk?'Рефакторинг auth middleware':'Refactor the auth middleware',state:'run',what:'Edit',detail:'session.rs',since:now-7*min,cwd:''},
     {sid:'c3',local:null,title:'',state:'run',what:'Bash',detail:uk?'Запустити тести':'Run the test suite',since:now-3*min,cwd:'C:/src/api-server'},
-    {sid:'d4',local:'local_4',title:uk?'Сторінка цін':'Pricing page copy',state:'done',what:'@done',detail:'',since:now-4*min,cwd:''},
+    {sid:'d4',local:'local_4',title:uk?'Сторінка цін':'Pricing page copy',state:'done',what:'@done',detail:'',since:now-4*min,cwd:'',said:uk?'Переписав три заголовки й таблицю тарифів. Ціни звірив із прайсом, нічого не закомічено.':'Rewrote three headings and the plans table. Prices are checked against the price list, nothing is committed.'},
     {sid:'e5',local:'local_5',title:uk?'Нічна збірка падає':'Nightly build is red',state:'idle',what:'',detail:'',since:now-95*min,cwd:''},
     {sid:'f6',local:'local_6',title:uk?'Документація API':'API docs pass',state:'idle',what:'',detail:'',since:now-200*min,cwd:''}
   ];
+  // ?perm=1: a session asks for permission, answerable on the card; ?empty=1: no sessions at all.
+  if(q.get('perm'))sessions.unshift({sid:'p0',local:null,title:'',state:'wait',what:'@perm',detail:'Bash · '+(uk?'Розгорнути на staging':'Deploy to staging'),more:'./scripts/deploy.sh staging --migrate\nkubectl rollout status deploy/api',perm:true,since:now-20000,cwd:'C:/src/api-server'});
+  if(q.get('empty'))sessions=[];
   var limits={status:'ok',at:now,data:{limits:[
     {kind:'session',percent:+(q.get('p5')||46),resets_at:new Date(now+(2*60+14)*min).toISOString()},
     {kind:'weekly_all',percent:+(q.get('pw')||23),resets_at:new Date(now+(3*24*60+5*60)*min).toISOString()}
@@ -47,13 +51,13 @@
   var reply={
     start_hint:[how==='card'||how==='settings'||how.indexOf('dock')===0?how:'',q.get('mood'),null],
     get_config:{lang:lang,kind:q.get('kind')||'cat',idleOpen:q.get('idle')==='open'},
-    poll:{cursor:[-1e9,-1e9],win:{x:0,y:0,w:1200,h:900},work:{x:0,y:0,w:1200,h:900},scale:1},
-    sessions:sessions,limits:limits,autostart_get:true,hook_status:{installed:true,events:11}
+    poll:{cursor:[-1e9,-1e9],win:{x:0,y:0,w:1200,h:900},work:{x:0,y:0,w:1200,h:+(q.get('wh')||900)},scale:1},
+    sessions:sessions,limits:limits,autostart_get:true,hook_status:{installed:q.get('hook')!=='off',events:12},copy_text:true
   };
   window.__TAURI__={
     core:{invoke:function(cmd){return Promise.resolve(reply[cmd]!==undefined?reply[cmd]:null);}},
     event:{listen:function(){return Promise.resolve(function(){});}},
-    app:{getName:function(){return Promise.resolve(q.get('name')||'Meownitor');},getVersion:function(){return Promise.resolve('0.1.0');}}
+    app:{getName:function(){return Promise.resolve(q.get('name')||'Meownitor');},getVersion:function(){try{var x=new XMLHttpRequest();x.open('GET','../app/src-tauri/tauri.conf.json',false);x.send();return Promise.resolve(JSON.parse(x.responseText).version);}catch(e){return Promise.resolve('');}}}
   };
 })();
 </script>
@@ -66,6 +70,11 @@
 </script>
 <script src="../app/src/i18n.js"></script>
 <script src="../app/src/pixel.js"></script>
+<script src="../app/src/sounds.js"></script>
 <script src="../app/src/widget.js"></script>
+<script>
+  // ?sel=<sid>: a click on that session's row, to show what it unfolds.
+  (function(){var sel=new URLSearchParams(location.search).get('sel');if(sel)setTimeout(function(){var r=document.querySelector('.row[data-sid="'+sel+'"] .nm');if(r)r.click();},300);})();
+</script>
 </body>
 </html>
