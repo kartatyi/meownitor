@@ -192,7 +192,7 @@ flowchart LR
 ```
 
 - **Sessions.** `meownitor-hook` is a [Claude Code hook](https://code.claude.com/docs/en/hooks)
-  on 11 events. For each event it writes what the session is doing into
+  on 12 events. For each event it writes what the session is doing into
   `~/.meownitor/sessions/<id>.json` and exits within milliseconds. It never blocks Claude
   or fails it. The widget merges those files with Claude Desktop's own session records (titles,
   archived or not, the `claude://` link) and with the session's transcript, which is how it sees a
@@ -210,7 +210,8 @@ flowchart LR
   runs `meownitor-hook ask <name>` in the background, which checks the page and waits. The widget
   serves the page, and the page kit built into it, in a window of its own. When you press **Send**,
   the answer lands next to the page and the waiting command hands it back to the session. It waits up to a day; an answer sent after it stopped reaches the session with
-  your next message to it. When you answer in the chat instead, the session takes the question back
+  your next message to it. A question stays in the widget for as long as it has no answer, days if
+  need be. When you answer in the chat instead, the session takes the question back
   (`meownitor-hook drop <name>`) and the widget stops asking. The skill's [`SKILL.md`](skill/meownitor-round/SKILL.md) is the full contract.
 
 ### Privacy
@@ -223,8 +224,12 @@ flowchart LR
 - The hook records each session's state, the current tool's name and one short detail: the file's
   name, the command's description, the search pattern. `events.log` keeps the last 512 KB of event
   names.
+- The widget cleans up after itself: a session's state file goes a week after its last event, a
+  session's rounds (pages, pictures, answers) a month after the last change in them. A round still
+  waiting for your answer is never removed.
 - `~/.claude/settings.json` is changed only when you press Install or Remove, uninstall the app, or
-  an update moves the hook's copy, and it is backed up first.
+  an update moves the hook's copy or brings an event the hook did not listen to before, and it is
+  backed up first.
 
 ## Build from source
 
