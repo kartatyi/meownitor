@@ -21,7 +21,8 @@
       'hook.uninstall':'Remove','hook.install':'Install',
       'back':'Back to sessions','character':'Character','sound':'Sound when a session asks','sound.t':'Sound',
       'autostart':'Start with Windows','autostart.mac':'Open at login','autostart.linux':'Start on login','autostart.t':'Autostart','autostart.err':'Autostart: {e}',
-      'language':'Language','check':'check'
+      'language':'Language','check':'check',
+      'edge':'At the screen edge','edge.strip':'Strip','edge.peek':'Peeking','edge.line':'Line'
     },
     uk:{
       'kind.cat':'Котик','kind.blob':'Краплинка','kind.ghost':'Привидок',
@@ -42,7 +43,8 @@
       'hook.uninstall':'Зняти','hook.install':'Поставити',
       'back':'Назад до сесій','character':'Персонаж','sound':'Звук, коли сесія питає','sound.t':'Звук',
       'autostart':'Запускати з Windows','autostart.mac':'Запускати під час входу','autostart.linux':'Запускати під час входу','autostart.t':'Автозапуск','autostart.err':'Автозапуск: {e}',
-      'language':'Мова','check':'перевірка'
+      'language':'Мова','check':'перевірка',
+      'edge':'На краю екрана','edge.strip':'Смужка','edge.peek':'Визирає','edge.line':'Лінія'
     }
   };
   var lang='en';
