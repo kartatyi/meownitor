@@ -4,13 +4,13 @@
 // so nothing puts it back. Every 2 s, on the window's thread: if a visible window that isn't topmost
 // sits above ours, ours goes back to the top of the topmost band — without taking the focus. Each
 // time widget.log says what was above it, so the culprit can be found.
-use std::time::Duration;
-use tauri::{AppHandle, Manager};
-
-const EVERY: Duration = Duration::from_secs(2);
+use tauri::AppHandle;
 
 #[cfg(windows)]
 pub fn spawn(app: AppHandle) {
+    use std::time::Duration;
+    use tauri::Manager;
+    const EVERY: Duration = Duration::from_secs(2);
     std::thread::spawn(move || loop {
         std::thread::sleep(EVERY);
         let a = app.clone();
