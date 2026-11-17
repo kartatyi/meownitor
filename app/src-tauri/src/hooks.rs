@@ -4,7 +4,7 @@
 // the file keeps its keys in their order.
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const EVENTS: [&str; 12] = [
     "SessionStart",
@@ -63,6 +63,53 @@ pub fn exe_name() -> &'static str {
 /// Where the hook lives for Claude Code: outside the build folder, so rebuilding never breaks Claude.
 fn installed_hook() -> Option<PathBuf> {
     crate::sessions::data_dir().map(|d| d.join("bin").join(exe_name()))
+}
+
+/// Makes `target` a copy of `source`, unless it is one already. Windows won't overwrite an exe
+/// that is running — a session's `ask` waiting for its answer, a hook call under way — but will
+/// rename it: that copy is moved aside as `<name>.<ms>.old` and goes on running from there, and the
+/// new one takes its place. `clear_aside` removes the copies aside once nothing runs them.
+pub fn put_copy(source: &Path, target: &Path) -> std::io::Result<()> {
+    let bytes = std::fs::read(source)?;
+    if std::fs::read(target).is_ok_and(|t| t == bytes) {
+        return Ok(());
+    }
+    let Err(e) = std::fs::copy(source, target) else {
+        return Ok(());
+    };
+    if !target.exists() {
+        return Err(e);
+    }
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let aside = target.with_extension(format!("{ms}.old"));
+    std::fs::rename(target, &aside)?;
+    if let Err(e) = std::fs::copy(source, target) {
+        // Claude Code runs whatever is at `target`: the old copy goes back rather than leave nothing.
+        let _ = std::fs::rename(&aside, target);
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Removes the copies `put_copy` moved aside next to `target`; one still running stays until the
+/// next try.
+pub fn clear_aside(target: &Path) {
+    let (Some(dir), Some(stem)) = (target.parent(), target.file_stem()) else {
+        return;
+    };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let prefix = format!("{}.", stem.to_string_lossy());
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.starts_with(&prefix) && name.ends_with(".old") {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
 }
 
 fn read_settings() -> Result<Value, String> {
@@ -166,7 +213,7 @@ pub fn install() -> Result<Status, String> {
         if let Some(dir) = target.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::copy(&source, &target).map_err(|e| format!("cannot copy the hook: {e}"))?;
+        put_copy(&source, &target).map_err(|e| format!("cannot copy the hook: {e}"))?;
     }
     if !target.exists() {
         return Err(format!("{} not found next to the widget", exe_name()));
@@ -218,12 +265,13 @@ pub fn refresh_copy() {
     let (Some(target), Ok(exe)) = (installed_hook(), std::env::current_exe()) else {
         return;
     };
+    clear_aside(&target);
     let source = exe.with_file_name(exe_name());
     if source == target || !source.exists() || !target.exists() || !status().installed {
         return;
     }
-    if std::fs::read(&source).ok() != std::fs::read(&target).ok() {
-        let _ = std::fs::copy(&source, &target);
+    if let Err(e) = put_copy(&source, &target) {
+        crate::watchdog::log(&format!("could not update the hook copy: {e}"));
     }
 }
 
@@ -383,5 +431,54 @@ mod tests {
             .count();
         assert!(backups >= 1, "backups written");
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A hook copy that is running — a session's `ask` waiting for its answer — is moved aside
+    /// and replaced; the copy aside goes once nothing runs it. A copy of ping.exe stands in for it.
+    #[cfg(windows)]
+    #[test]
+    fn a_running_copy_is_moved_aside_and_replaced() {
+        let dir = std::env::temp_dir().join(format!("cw-put-copy-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("meownitor-hook.exe");
+        let ping = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32")
+            .join("PING.EXE");
+        std::fs::copy(&ping, &target).unwrap();
+        let mut running = std::process::Command::new(&target)
+            .args(["-n", "60", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let source = dir.join("new-hook.exe");
+        std::fs::write(&source, b"new hook").unwrap();
+        let aside = || -> Vec<PathBuf> {
+            std::fs::read_dir(&dir)
+                .unwrap()
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "old"))
+                .collect()
+        };
+
+        assert!(
+            std::fs::copy(&source, &target).is_err(),
+            "Windows refuses to overwrite a running exe"
+        );
+        put_copy(&source, &target).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new hook");
+        assert_eq!(aside().len(), 1, "the running copy is kept aside");
+        put_copy(&source, &target).unwrap();
+        assert_eq!(aside().len(), 1, "the same copy again moves nothing");
+
+        clear_aside(&target);
+        assert_eq!(aside().len(), 1, "still running, so still there");
+        running.kill().unwrap();
+        running.wait().unwrap();
+        clear_aside(&target);
+        assert!(aside().is_empty(), "gone once nothing runs it");
+        assert!(target.exists() && source.exists(), "only copies aside go");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

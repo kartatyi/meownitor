@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Windows: an update no longer gets stuck on the hook while a question waits for your answer. The
+  waiting `meownitor-hook ask` kept the hook's copy in `~/.meownitor/bin` from being replaced, so
+  Claude Code went on running the old hook, and an installer that uninstalls first could take the
+  hook out of `~/.claude/settings.json` and not put it back. The running copy is now renamed aside
+  (`meownitor-hook.<ms>.old`), keeps waiting from there, and is removed on a later start once
+  nothing runs it.
+
 ## 0.3.0
 
 ### Sessions
