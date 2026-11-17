@@ -6,9 +6,11 @@
 mod config;
 mod hooks;
 mod i18n;
+mod instance;
 mod lifecycle;
 mod limits;
 mod msix;
+mod ontop;
 mod rounds;
 mod sessions;
 mod skill;
@@ -300,6 +302,11 @@ fn main() {
     if msix::relaunch_outside() {
         return;
     }
+    // One widget at a time (instance.rs); the lock is held until the process ends.
+    let Some(_only) = instance::take() else {
+        watchdog::log("another widget is already running: leaving");
+        return;
+    };
     msix::migrate(&context.package_info().name);
     // Wayland lets no window place itself or see the cursor outside it, and the widget does both
     // (dragging, snapping to an edge, the eyes): wherever there is an X server — XWayland under a
@@ -368,6 +375,7 @@ fn main() {
                 })
                 .build(app)?;
             hooks::refresh_copy();
+            hooks::catch_up();
             // The skill the sessions read is the one this widget came with (release builds only,
             // like the hook's copy).
             if !cfg!(debug_assertions) && hooks::status().installed {
@@ -376,6 +384,7 @@ fn main() {
             sessions::spawn(app.handle().clone());
             limits::spawn(app.handle().clone());
             watchdog::spawn(app.handle().clone());
+            ontop::spawn(app.handle().clone());
             Ok(())
         })
         .build(context)

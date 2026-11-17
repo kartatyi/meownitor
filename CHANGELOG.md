@@ -30,6 +30,22 @@
 - An answer with no pick but a comment reads `1 — own option`.
 - The skill is split: a short `SKILL.md` with the steps, and `reference.md` with frames, numbers and
   the rest of the kit, read when a page needs them.
+- Windows: the widget no longer gets lost behind other windows some time into a run. Every 2 s it
+  checks that no ordinary window sits above it and goes back on top if one does, without taking
+  the focus; `widget.log` names the window it was under.
+- A session that waits for you — a permission request, a question — stays under «Waiting for you»
+  until it is answered or stopped. After half an hour of silence it used to drop into the idle
+  group, and the pet stopped asking. A question round stays for as long as it has no answer, and
+  its row keeps the session's name after the session itself has left the list.
+- A turn that ended on an API error shows as «Stopped with an error», with the reason: limit
+  reached, server error and the like. For that the hook listens to a twelfth event, `StopFailure`;
+  a hook installed earlier gets it on the first start of the updated widget (`settings.json` is
+  backed up first, as always).
+- One widget at a time: started while one is running, a second widget leaves instead of sitting
+  next to the first.
+- The data folder is cleaned up: a session's state file goes a week after its last event, a
+  session's rounds a month after the last change in them — never while one of them still waits for
+  an answer. The round folders are no longer read in full three times a second.
 
 ## 0.2.0
 

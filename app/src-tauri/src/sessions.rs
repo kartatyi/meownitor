@@ -16,8 +16,13 @@ use tauri::{AppHandle, Emitter, Manager};
 const OPEN_FOR_MS: u64 = 24 * 3600 * 1000;
 /// A finished turn nobody came back to drops into the idle group after this long.
 const DONE_TO_IDLE_MS: u64 = 30 * 60 * 1000;
-/// A working or waiting session that has been silent this long is assumed gone.
+/// A working session that has been silent this long is assumed gone. A waiting one is not: it
+/// sends nothing while it waits for you, so it stays until it is answered, stopped or a day old.
 const STALE_MS: u64 = 30 * 60 * 1000;
+/// A session's state file is kept this long after its last event: the list shows a day, the rest
+/// is margin. Old files and old answered rounds (rounds.rs `prune`) go once in `CLEAN_EVERY`.
+const KEEP_STATE: Duration = Duration::from_secs(7 * 24 * 3600);
+const CLEAN_EVERY: Duration = Duration::from_secs(3600);
 
 #[derive(Serialize, Clone, PartialEq)]
 pub struct Session {
@@ -264,6 +269,32 @@ fn ends_interrupted(path: &Path) -> bool {
     false
 }
 
+/// Removes the state files (and a hook's leftover .tmp) untouched for `KEEP_STATE` — except those
+/// of the sessions in `keep`, which have a round still waiting: its row is named from the file.
+/// Returns how many went.
+fn prune(dir: &Path, keep: &[&str], now: SystemTime) -> usize {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut gone = 0;
+    for e in rd.flatten() {
+        let p = e.path();
+        let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
+        if !e.file_type().is_ok_and(|t| t.is_file()) || (ext != "json" && ext != "tmp") {
+            continue;
+        }
+        let stem = p.file_stem().and_then(|x| x.to_str()).unwrap_or("");
+        if ext == "json" && keep.contains(&stem) {
+            continue;
+        }
+        let old = mtime(&p).is_some_and(|t| now.duration_since(t).is_ok_and(|a| a > KEEP_STATE));
+        if old && std::fs::remove_file(&p).is_ok() {
+            gone += 1;
+        }
+    }
+    gone
+}
+
 fn folder_name(cwd: &str) -> String {
     cwd.trim_end_matches(['/', '\\'])
         .rsplit(['/', '\\'])
@@ -317,10 +348,13 @@ fn compose(
             continue;
         }
         let mut state = h.state.clone();
-        if (state == "done" && now.saturating_sub(h.since) > DONE_TO_IDLE_MS)
-            || ((state == "run" || state == "wait")
-                && (now.saturating_sub(h.updated) > STALE_MS || stopped.contains(sid)))
-        {
+        let over = match state.as_str() {
+            "done" => now.saturating_sub(h.since) > DONE_TO_IDLE_MS,
+            "run" => now.saturating_sub(h.updated) > STALE_MS || stopped.contains(sid),
+            "wait" => stopped.contains(sid),
+            _ => false,
+        };
+        if over {
             state = "idle".into();
         }
         let e = map.entry(sid.clone()).or_insert_with(|| Session {
@@ -352,18 +386,41 @@ fn compose(
         };
         e.state = state;
     }
-    // A pending round outranks whatever the hook last said: the session is waiting for you.
+    // A pending round outranks whatever the hook last said: the session is waiting for you — for as
+    // long as the round is unanswered, days after the session itself left the list. Such a row is
+    // still named by what Desktop or the hook knew of the session.
     for r in rounds {
-        let e = map.entry(r.sid.clone()).or_insert_with(|| Session {
-            sid: r.sid.clone(),
-            local: None,
-            title: String::new(),
-            state: String::new(),
-            what: String::new(),
-            detail: String::new(),
-            since: 0,
-            cwd: String::new(),
-            round: None,
+        let e = map.entry(r.sid.clone()).or_insert_with(|| {
+            let d = desk
+                .values()
+                .find(|(cli, d)| *cli == r.sid && !d.archived)
+                .map(|(_, d)| d);
+            let h = hooks
+                .values()
+                .find(|(sid, _)| *sid == r.sid)
+                .map(|(_, h)| h);
+            Session {
+                sid: r.sid.clone(),
+                local: d.map(|d| d.local.clone()),
+                title: d
+                    .map(|d| {
+                        if d.title.is_empty() {
+                            folder_name(&d.cwd)
+                        } else {
+                            d.title.clone()
+                        }
+                    })
+                    .unwrap_or_default(),
+                state: String::new(),
+                what: String::new(),
+                detail: String::new(),
+                since: 0,
+                cwd: d
+                    .map(|d| d.cwd.clone())
+                    .or_else(|| h.map(|h| h.cwd.clone()))
+                    .unwrap_or_default(),
+                round: None,
+            }
         });
         e.state = "wait".into();
         e.what = "@ask".into();
@@ -388,6 +445,8 @@ pub fn spawn(app: AppHandle) {
         let mut transcripts: Cache<bool> = Cache::new();
         let mut last_desk = Instant::now() - Duration::from_secs(60);
         let mut last_sent: Option<Vec<Session>> = None;
+        let mut rounds = crate::rounds::Watch::new();
+        let mut cleaned: Option<Instant> = None;
         loop {
             let mut files = Vec::new();
             list_json(&hook_dir, 0, "", &mut files);
@@ -396,8 +455,9 @@ pub fn spawn(app: AppHandle) {
             let busy: Vec<PathBuf> = hooks
                 .values()
                 .filter(|(_, h)| {
-                    (h.state == "run" || h.state == "wait")
-                        && now.saturating_sub(h.updated) <= STALE_MS
+                    let quiet = now.saturating_sub(h.updated);
+                    (h.state == "run" && quiet <= STALE_MS)
+                        || (h.state == "wait" && quiet <= OPEN_FOR_MS)
                 })
                 .filter_map(|(sid, h)| transcript_of(sid, h))
                 .collect();
@@ -420,7 +480,20 @@ pub fn spawn(app: AppHandle) {
                 }
                 last_desk = Instant::now();
             }
-            let list = compose(&hooks, &desk, &stopped, &crate::rounds::pending(), now);
+            let pending = rounds.pending();
+            // Release builds only: a build under work deletes nothing from the data folder.
+            if !cfg!(debug_assertions) && cleaned.is_none_or(|t| t.elapsed() >= CLEAN_EVERY) {
+                let keep: Vec<&str> = pending.iter().map(|r| r.sid.as_str()).collect();
+                let states = prune(&hook_dir, &keep, SystemTime::now());
+                let folders = crate::rounds::prune();
+                if states + folders > 0 {
+                    crate::watchdog::log(&format!(
+                        "cleaned up: {states} session files untouched for a week, {folders} round folders untouched for a month"
+                    ));
+                }
+                cleaned = Some(Instant::now());
+            }
+            let list = compose(&hooks, &desk, &stopped, &pending, now);
             if last_sent.as_ref() != Some(&list) {
                 if let Some(latest) = app.try_state::<Latest>() {
                     *latest.0.lock().unwrap() = list.clone();
@@ -464,6 +537,98 @@ pub fn open_in_desktop(local: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hooked(state: &str, quiet_ms: u64, now: u64) -> Hooked {
+        Hooked {
+            cwd: "C:/work/api-server".into(),
+            transcript: String::new(),
+            state: state.into(),
+            what: "@perm".into(),
+            detail: String::new(),
+            since: now - quiet_ms,
+            updated: now - quiet_ms,
+        }
+    }
+
+    fn cache<T>(entries: Vec<(&str, T)>) -> Cache<T> {
+        let mut c = Cache::new();
+        for (sid, v) in entries {
+            c.seen
+                .insert(PathBuf::from(sid), (UNIX_EPOCH, Some((sid.to_string(), v))));
+        }
+        c
+    }
+
+    /// Silence ends a working session, not one that waits for you: that one stays until it is
+    /// stopped or a day old, and a round stays for as long as it is unanswered.
+    #[test]
+    fn a_waiting_session_stays_waiting() {
+        let now = 10 * OPEN_FOR_MS;
+        let hour = 3600 * 1000;
+        let hooks = cache(vec![
+            ("waits", hooked("wait", 2 * hour, now)),
+            ("works", hooked("run", 2 * hour, now)),
+            ("stopped", hooked("wait", 2 * hour, now)),
+            ("old", hooked("wait", 25 * hour, now)),
+            ("asked", hooked("done", 72 * hour, now)),
+        ]);
+        let rounds = [crate::rounds::Pending {
+            sid: "asked".into(),
+            name: "pick".into(),
+            title: "Pick one".into(),
+            since: now - 72 * hour,
+        }];
+        let list = compose(
+            &hooks,
+            &Cache::new(),
+            &["stopped".to_string()],
+            &rounds,
+            now,
+        );
+        let state = |sid: &str| list.iter().find(|s| s.sid == sid).map(|s| s.state.as_str());
+        assert_eq!(state("waits"), Some("wait"));
+        assert_eq!(state("works"), Some("idle"));
+        assert_eq!(state("stopped"), Some("idle"));
+        assert_eq!(
+            state("old"),
+            None,
+            "a day of silence drops it from the list"
+        );
+        let asked = list.iter().find(|s| s.sid == "asked").unwrap();
+        assert_eq!(
+            (
+                asked.state.as_str(),
+                asked.round.as_deref(),
+                asked.cwd.as_str()
+            ),
+            ("wait", Some("pick"), "C:/work/api-server"),
+            "a round asked three days ago is still there to answer, named by its folder"
+        );
+    }
+
+    /// A week-old state file goes, a fresh one stays, and so does an old one whose session still
+    /// has a round waiting; nothing but the hook's own files is touched.
+    #[test]
+    fn old_state_files_go_except_those_with_a_round_waiting() {
+        let dir = std::env::temp_dir().join(format!("cw-states-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in ["gone.json", "asked.json", "gone.123.tmp", "notes.txt"] {
+            std::fs::write(dir.join(f), "{}").unwrap();
+        }
+        let now = SystemTime::now();
+        assert_eq!(
+            prune(&dir, &["asked"], now),
+            0,
+            "nothing here is a week old"
+        );
+        let later = now + KEEP_STATE + Duration::from_secs(60);
+        assert_eq!(prune(&dir, &["asked"], later), 2);
+        let left = |f: &str| dir.join(f).exists();
+        assert!(!left("gone.json") && !left("gone.123.tmp"));
+        assert!(left("asked.json") && left("notes.txt"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A stop is seen only while it is the transcript's last message — plain or mid-tool; a new
     /// prompt after it, or a reply, means the session went on.
